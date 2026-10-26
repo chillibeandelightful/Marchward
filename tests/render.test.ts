@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { kestrelFord } from '../src/data/sites/kestrelFord';
 import { Camera } from '../src/render/camera';
+import { frontDiagonal, pickPiece } from '../src/render/castleArt';
 import { isoToScreen } from '../src/render/iso';
 import { buildTileShapes, pickTile, tileCorners } from '../src/render/tileGeometry';
+import { createPlan, placePieces, viewPlan } from '../src/sim/castle';
 import { buildSite } from '../src/sim/site';
 import { heightAt, inBounds, type TerrainMap } from '../src/sim/terrain';
 
@@ -112,5 +114,28 @@ describe('camera', () => {
     const s = cam.worldToScreen(w.x, w.y, 800, 600);
     expect(s.x).toBeCloseTo(123);
     expect(s.y).toBeCloseTo(456);
+  });
+});
+
+describe('castle pieces on screen', () => {
+  const flat = mapFrom(Array.from({ length: 8 }, () => new Array<number>(8).fill(1)));
+
+  it('are drawn with the row of their front-most tile', () => {
+    expect(frontDiagonal({ kind: 'keep', x: 2, y: 3 })).toBe(7);
+    expect(frontDiagonal({ kind: 'tower', x: 2, y: 3, shape: 'round', height: 'low' })).toBe(5);
+  });
+
+  it('can be picked by pointing at their walls, in front of the ground behind them', () => {
+    const plan = createPlan(flat);
+    placePieces(flat, plan, [{ kind: 'tower', x: 4, y: 4, shape: 'square', height: 'high' }]);
+    const view = viewPlan(flat, plan);
+    // Halfway up the tower's front corner, which hides the ground of the tile behind it.
+    const p = isoToScreen(4.5, 4.5, 3);
+    const ground = pickTile(buildTileShapes(flat), p.sx, p.sy);
+    expect(ground).not.toBeNull();
+    expect(pickPiece(view, p.sx, p.sy, (ground?.x ?? 0) + (ground?.y ?? 0))?.kind).toBe('tower');
+    // Pointing at open ground well away from it picks nothing.
+    const q = isoToScreen(1, 1, 1);
+    expect(pickPiece(view, q.sx, q.sy, 2)).toBeNull();
   });
 });

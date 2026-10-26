@@ -24,21 +24,33 @@ interface Decor {
   v: number;
 }
 
+/** Things that stand on the land (castle pieces), drawn in with each diagonal row. */
+export interface RowExtras {
+  /** Hide the ground sprites (trees, stones) on this tile. */
+  hidesDecor(x: number, y: number): boolean;
+  /** Draw whatever stands on this diagonal row (x + y), after the row's ground and sprites. */
+  drawRow(diagonal: number, g: Graphics): void;
+}
+
 /**
- * Draws the land from sim state. Each diagonal row of tiles gets one Graphics for the ground
- * and one container for the sprites standing on it, drawn back to front so nearer land and
- * taller things overlap what is behind them. Reads state; never changes it.
+ * Draws the land from sim state. Each diagonal row of tiles gets one Graphics for the ground,
+ * one container for the sprites standing on it and one Graphics for extras (castle pieces),
+ * drawn back to front so nearer land and taller things overlap what is behind them.
+ * Reads state; never changes it.
  */
 export class TerrainView {
   readonly root = new Container();
   private readonly land = new Container();
   private readonly hover = new Graphics();
   private grid = false;
+  private rows: { ground: Graphics; sprites: Container; extra: Graphics }[] = [];
+  private decor = new Map<number, Sprite[]>();
 
   constructor(
-    private readonly map: TerrainMap,
-    private readonly shapes: readonly TileShape[],
+    private map: TerrainMap,
+    private shapes: readonly TileShape[],
     private readonly assets: SpriteAssets,
+    private readonly extras?: RowExtras,
   ) {
     this.root.addChild(this.land, this.hover);
     this.build();
@@ -54,6 +66,44 @@ export class TerrainView {
     this.build();
   }
 
+  /** Redraw everything for changed land (after planned earthworks). */
+  setLand(map: TerrainMap, shapes: readonly TileShape[]): void {
+    this.map = map;
+    this.shapes = shapes;
+    this.build();
+  }
+
+  /** Redraw just some diagonal rows of changed land; much quicker than `setLand` for a few tiles. */
+  updateRows(map: TerrainMap, shapes: readonly TileShape[], diagonals: Iterable<number>): void {
+    this.map = map;
+    this.shapes = shapes;
+    for (const d of diagonals) {
+      const row = this.rows[d];
+      if (!row) continue;
+      row.ground.clear();
+      for (const child of row.sprites.removeChildren()) child.destroy();
+      for (const s of shapes) {
+        if (s.x + s.y !== d) continue;
+        this.decor.delete(s.y * map.width + s.x);
+        this.drawTile(row.ground, row.sprites, s);
+      }
+    }
+    this.redrawExtras();
+  }
+
+  /** Redraw only the extras and which sprites they hide; much cheaper than a full rebuild. */
+  redrawExtras(): void {
+    if (!this.extras) return;
+    this.rows.forEach((row, d) => {
+      row.extra.clear();
+      this.extras?.drawRow(d, row.extra);
+    });
+    for (const [i, sprites] of this.decor) {
+      const hidden = this.extras.hidesDecor(i % this.map.width, Math.floor(i / this.map.width));
+      for (const s of sprites) s.visible = !hidden;
+    }
+  }
+
   setHover(shape: TileShape | null): void {
     const g = this.hover.clear();
     if (!shape) return;
@@ -62,6 +112,8 @@ export class TerrainView {
 
   private build(): void {
     for (const child of this.land.removeChildren()) child.destroy({ children: true });
+    this.rows = [];
+    this.decor.clear();
     let row: Graphics | null = null;
     let sprites: Container | null = null;
     let diagonal = -1;
@@ -70,10 +122,13 @@ export class TerrainView {
         diagonal = s.x + s.y;
         row = new Graphics();
         sprites = new Container();
-        this.land.addChild(row, sprites);
+        const extra = new Graphics();
+        this.rows[diagonal] = { ground: row, sprites, extra };
+        this.land.addChild(row, sprites, extra);
       }
       this.drawTile(row as Graphics, sprites as Container, s);
     }
+    this.redrawExtras();
   }
 
   private drawTile(g: Graphics, sprites: Container, s: TileShape): void {
@@ -125,6 +180,8 @@ export class TerrainView {
       sprite.anchor.set(art.anchorX, art.anchorY);
       sprite.position.set(p.x, p.y);
       sprites.addChild(sprite);
+      const i = s.y * this.map.width + s.x;
+      this.decor.set(i, [...(this.decor.get(i) ?? []), sprite]);
     }
   }
 

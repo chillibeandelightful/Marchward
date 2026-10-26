@@ -89,4 +89,14 @@ Update as milestones complete.
 - Camera: drag or WASD/arrows to pan, wheel or +/− to zoom towards the pointer, C to recentre, G for a grid. Hover readout of terrain, height, slope/cliff, movement and building.
 - Tile picking checks front to back against each tile's top and cliff faces, so a tile hidden behind a cliff can't be picked through it.
 - Tests: slope/cliff rules, site building (hills only make slopes, plateaus make cliffs, rivers, fords, road lines), the test site (all terrain types, both slopes and cliffs, road never climbs a cliff), seamless corner heights, picking, and camera zoom/clamp.
+- Playtest: approved. Terrain types read clearly. Open question raised about map size (see the decisions log in `DESIGN.md`).
+
+### M2 – Castle designer (done 2026-10-26)
+- Pieces: walls (Thin/Standard/Thick × Low/Medium/High), towers (Square/Round × Low/Medium/High), one gatehouse and one 2×2 keep. Stats live in `src/data/castle.ts`; ground preparation costs per terrain type in `src/data/terrain.ts`.
+- Rules (`src/sim/castle.ts`, plain data in `SimState.plan`): no building on water; forest is cleared first (extra labour, gives timber); marsh needs piling (extra stone, timber and labour); rocky ground can't be dug or undermined; walls can't cross a cliff; new walls must join the existing curtain; the keep needs level ground; the gate passage must open onto walkable ground at both ends and stay clear. Placing a tower or gatehouse on a wall turns that wall tile into it.
+- Stats and cost shown before placing, for the exact tile under the pointer: strength (HP), height, height above the ground attackers can reach (which decides ladders), archer range bonus, notes (round towers, rock), and stone / timber / worker-days. Dragging a wall shows the whole line's cost.
+- Plan panel: piece counts, total cost, earthworks and spoil balance, and checks (keep, gatehouse, keep enclosed, walls in one piece, any pieces broken by later earthworks). Enclosure counts cliffs and deep water as defences, with the gate shut.
+- Earthworks: mark tiles to raise or lower one level per click (or drag), shown as amber/blue chevrons; the land is drawn as it will be once dug. Spoil balance and labour shown; a shortfall is a warning, not a block.
+- Pieces drawn in code (stone courses, battlements, arrow slits, round tower drums, gatehouse arch and portcullis, keep with corner turrets and a pennant), depth-sorted with the land row by row. Pointing at a wall or tower picks that piece rather than the ground hidden behind it.
+- Tests: placement rules, costs by thickness and terrain, cliffs, joining, one keep/gatehouse, level keep ground, towers replacing walls, gate passage, removal, enclosure (walls and natural cliffs), problems after earthworks, height-above-approach and ladder rules, round tower notes, spoil balance and earthwork limits, plan JSON round-trip, piece picking.
 

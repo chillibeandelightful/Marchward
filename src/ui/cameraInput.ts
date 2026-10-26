@@ -17,6 +17,8 @@ const ZOOM_STEP = 1.2;
 export interface CameraInputHooks {
   onHome(): void;
   onToggleGrid(): void;
+  /** Should this press drag the view? (Otherwise it's left for the designer tools.) */
+  canPan(e: PointerEvent): boolean;
 }
 
 /** Mouse, touch and keyboard controls for the camera. Owns no game state. */
@@ -33,6 +35,7 @@ export class CameraInput {
   ) {
     el.style.touchAction = 'none';
     el.addEventListener('pointerdown', (e) => {
+      if (!hooks.canPan(e)) return;
       this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
       el.setPointerCapture(e.pointerId);
       el.style.cursor = 'grabbing';
