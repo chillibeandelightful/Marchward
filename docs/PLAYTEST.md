@@ -44,3 +44,20 @@ After each milestone, add a section:
 - **The questions for this milestone:** is designing fun and clear? Are the stats understandable?
 **Known issues:** nothing gets built yet; the plan is a design only (workers, time and money come in M3). The design is lost when the page reloads (saving comes in M3). Previews of new pieces float on top, so they aren't hidden by hills in front. Ground right behind a tall wall can be hard to point at; zoom in or point at the wall itself. Mouse and keyboard only.
 **Feedback:** Approved. Two notes: (1) lowering the same spot again and again made the land look disjointed (a sheer pit); digging should ripple outwards to the tiles around it. (2) The keep looked like it sat on a mat lined up with the ground-level grid. Both addressed in a follow-up: lowering and raising now pull the surrounding ground along as a walkable slope (hold Shift for a sheer cut), and earthwork marks are now drawn with the land, so they no longer show on top of pieces standing on marked ground.
+
+## M3 – Construction, workers and economy (2026-10-26)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- **The clock starts paused** so you can design first. The bar at the top shows the date and season, pause and speed buttons (1×, 2×, 4×), and your crowns, stone, timber, food (and how many days it will last), spoil, workers and efficiency. **Space** pauses and restarts.
+- **Design a castle** in the Plan tab as in M2 (the land is now shown as it is; while using Raise or Lower, or after pressing V, it's shown as planned). Planned pieces appear as a **pale blue model**.
+- **Hire workers** in the **Workers** tab: use + and +5 to say how many of each you want. They turn up over a few days. Hover a trade's name, or read the line under it, for what it does. You'll want masons, carpenters, diggers, some labourers and carters, and quarrymen for stone. Try Low and Generous wages and watch hiring speed and efficiency change.
+- **Start the clock** (Space, or a speed button). Workers walk out from the camp by the road west of the hill; pieces rise in stone with scaffolding and get their battlements when finished; carts run back and forth. Dug earthworks actually change the land.
+- **See what's slowing you down** in the **Building** tab: progress, expected finish date, the main thing holding things up (a trade you're short of, stone, food, money), and each job's progress or why it's stopped. Point at any piece to see how it's going.
+- **Run things short on purpose:** stop buying food, or hire far more than you can pay. Workers slow to half speed, the top bar turns red, the log says people are walking off, and nobody new comes until it's fixed. Buy food and supplies at the bottom of the Workers tab. Try the monthly levy for quick money (people's standing drops, which lowers taxes and slows hiring).
+- **Seasons:** in winter all building stops (workers stay on at half pay; dismiss them to save money). Taxes arrive on 1 March from year 2 (more for a bigger finished castle), harvest food on 1 September.
+- **Reports** tab: graphs of money, food and stone, workforce, efficiency and progress, and a log of what happened.
+- **Save and load** in the **Game** tab. The game also autosaves on the first of each month. Reload the page and use Load to carry on.
+- **The questions for this milestone:** does building feel satisfying? Is it clear what's slowing you down?
+**Known issues:** workers walk in straight lines (pathfinding comes in M4) and are drawn over walls they stand behind in a few spots. Removing a piece, even a finished one, removes it with no refund. Job order is automatic (earthworks first, then pieces in the order you placed them); there's no way to set priorities yet. The balance numbers are first guesses. Mouse and keyboard only.
+**Feedback:**
+

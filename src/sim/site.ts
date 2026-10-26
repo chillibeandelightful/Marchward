@@ -15,6 +15,8 @@ export interface SiteDef {
   height: number;
   baseHeight: number;
   features: readonly SiteFeature[];
+  /** Where the workers' camp and stores stand: flat open ground near the road. */
+  camp?: Point;
 }
 
 export type SiteFeature =

@@ -43,7 +43,8 @@ export class TerrainView {
   private readonly land = new Container();
   private readonly hover = new Graphics();
   private grid = false;
-  private rows: { ground: Graphics; sprites: Container; extra: Graphics }[] = [];
+  private rows: { ground: Graphics; sprites: Container; extra: Graphics; actors: Graphics }[] = [];
+  private usedActors = new Set<number>();
   private decor = new Map<number, Sprite[]>();
 
   constructor(
@@ -104,6 +105,19 @@ export class TerrainView {
     }
   }
 
+  /** A layer drawn just after a row's pieces, for figures that move every frame. Cleared by `clearActors`. */
+  actorsFor(diagonal: number): Graphics | undefined {
+    const row = this.rows[diagonal];
+    if (!row) return undefined;
+    this.usedActors.add(diagonal);
+    return row.actors;
+  }
+
+  clearActors(): void {
+    for (const d of this.usedActors) this.rows[d]?.actors.clear();
+    this.usedActors.clear();
+  }
+
   setHover(shape: TileShape | null): void {
     const g = this.hover.clear();
     if (!shape) return;
@@ -113,6 +127,7 @@ export class TerrainView {
   private build(): void {
     for (const child of this.land.removeChildren()) child.destroy({ children: true });
     this.rows = [];
+    this.usedActors.clear();
     this.decor.clear();
     let row: Graphics | null = null;
     let sprites: Container | null = null;
@@ -123,8 +138,9 @@ export class TerrainView {
         row = new Graphics();
         sprites = new Container();
         const extra = new Graphics();
-        this.rows[diagonal] = { ground: row, sprites, extra };
-        this.land.addChild(row, sprites, extra);
+        const actors = new Graphics();
+        this.rows[diagonal] = { ground: row, sprites, extra, actors };
+        this.land.addChild(row, sprites, extra, actors);
       }
       this.drawTile(row as Graphics, sprites as Container, s);
     }

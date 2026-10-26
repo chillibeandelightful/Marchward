@@ -11,6 +11,8 @@ export const kestrelFord: SiteDef = {
   width: 64,
   height: 64,
   baseHeight: 1,
+  // Flat grass beside the road, below the hill, for the workers' camp.
+  camp: [20, 28],
   features: [
     // Land shape.
     { kind: 'hill', at: [36, 34], radius: 13, peak: 4 },
