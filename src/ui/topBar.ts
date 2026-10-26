@@ -1,6 +1,7 @@
 import { ECONOMY, SEASON_NAME } from '../data/economy';
 import { dateOf, formatDate } from '../sim/calendar';
-import { efficiency, totalWorkers } from '../sim/economy';
+import { efficiency, mouths, totalWorkers } from '../sim/economy';
+import { battleCounts, battleSeconds } from '../sim/battle';
 import { today } from '../sim/state';
 import { button, crowns, el, setClass, setText } from './dom';
 import { SPEEDS, type GameHost } from './host';
@@ -13,6 +14,7 @@ export class TopBar {
   private readonly pause: HTMLButtonElement;
   private readonly stores = el('div', 'stores');
   private readonly items: Record<string, HTMLSpanElement> = {};
+  private readonly alert = el('div', 'alert');
 
   constructor(
     root: HTMLElement,
@@ -31,7 +33,7 @@ export class TopBar {
       this.items[k] = span;
       this.stores.append(span);
     }
-    root.replaceChildren(row, this.stores);
+    root.replaceChildren(row, this.stores, this.alert);
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'Space' || e.target instanceof HTMLInputElement) return;
       e.preventDefault();
@@ -57,7 +59,7 @@ export class TopBar {
     const st = e.stores;
     const workers = totalWorkers(e);
     const wanted = Object.values(e.wanted).reduce((a, b) => a + b, 0);
-    const eat = workers * ECONOMY.rationsPerWorker;
+    const eat = mouths(e) * ECONOMY.rationsPerWorker;
     const foodDays = eat > 0 ? Math.floor(st.food / eat) : null;
     this.item('crowns', `Crowns ${crowns(st.crowns)}`, e.unpaid ? 'bad' : '');
     this.item('stone', `Stone ${Math.floor(st.stone)}`, '');
@@ -70,6 +72,22 @@ export class TopBar {
       `Workers ${workers}${wanted > workers ? (stalled ? ` (nobody will come while ${e.unpaid ? 'wages are unpaid' : 'food is short'})` : ` (hiring ${wanted - workers})`) : ''}`,
       stalled && wanted > workers ? 'warn' : '',
     );
+    const def = sim.defence;
+    const b = def.battle;
+    if (b) {
+      const c = battleCounts(b);
+      setText(
+        this.alert,
+        `⚔ Raid ${b.raid}, ${Math.floor(battleSeconds(b))}s · raiders left ${c.attackers} · your soldiers ${c.defenders}${b.phase === 'retreat' ? ' · they are falling back' : ''}${speed === 0 ? ' · paused: press Space to fight' : ''}`,
+      );
+      setClass(this.alert, 'alert bad');
+    } else if (def.raids && def.warned) {
+      setText(this.alert, `Raiders expected in ${def.nextRaid - day} days, from the ${def.from}. Post your soldiers with the Troops tool (0).`);
+      setClass(this.alert, 'alert warn');
+    } else {
+      setText(this.alert, '');
+      setClass(this.alert, 'alert');
+    }
     this.item('efficiency', workers > 0 ? `Efficiency ${Math.round(efficiency(e) * 100)}%` : '', efficiency(e) < 0.8 ? 'bad' : '');
   }
 

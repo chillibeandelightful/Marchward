@@ -18,6 +18,7 @@ import {
   placePieces,
   removePieceAt,
   shapeEarth,
+  toggleExtra,
   type Axis,
   type CastlePlan,
   type Piece,
@@ -26,11 +27,15 @@ import {
   type PlanReport,
   type PlanView,
 } from '../sim/castle';
+import { EXTRAS, TROOPS, UNITS, type ExtraId, type TroopType } from '../data/combat';
+import { addPost, postProblem, postsAt, removePost } from '../sim/defence';
 import { walkLine } from '../sim/site';
+import type { SimState } from '../sim/state';
+import { reopenPiece } from '../sim/works';
 import { inBounds, type TerrainMap } from '../sim/terrain';
 import { formatCost, renderLines, statLines, type Line } from './format';
 
-export type ToolId = 'look' | 'wall' | 'tower' | 'gatehouse' | 'keep' | 'raise' | 'lower' | 'remove';
+export type ToolId = 'look' | 'wall' | 'tower' | 'gatehouse' | 'keep' | 'raise' | 'lower' | 'remove' | 'extras' | 'troops';
 
 const TOOLS: readonly { id: ToolId; name: string; key: string; help: string }[] = [
   { id: 'look', name: 'Look', key: '1', help: 'Point at land or pieces to see their numbers. Drag to move the view.' },
@@ -51,6 +56,18 @@ const TOOLS: readonly { id: ToolId; name: string; key: string; help: string }[] 
     help: 'Click or drag to dig tiles down one level; the ground around slopes down with them. Hold Shift for a sheer cut, like a ditch. Makes spoil.',
   },
   { id: 'remove', name: 'Remove', key: '8', help: 'Click or drag to remove pieces and earthwork marks.' },
+  {
+    id: 'extras',
+    name: 'Extras',
+    key: '9',
+    help: 'Click or drag over walls, towers and the gatehouse to add the chosen extra; click again to take it off. Finished pieces go back on the building list for it.',
+  },
+  {
+    id: 'troops',
+    name: 'Troops',
+    key: '0',
+    help: 'Click to post a soldier: archers on walls and towers (or the ground), swordsmen on the ground. Shift-click takes one off. Anyone without a post is placed for you when raiders come.',
+  },
 ];
 
 export type Tile = { x: number; y: number };
@@ -71,6 +88,10 @@ export interface DesignerHost {
   changed(land: readonly Tile[] | 'all'): void;
   /** How the building of a piece is going, for the readout. */
   buildLines(piece: Piece): Line[];
+  /** The whole game, for the garrison's posts and building progress. */
+  readonly sim: SimState;
+  /** A battle is on: in classic control nothing can be changed until it's over. */
+  locked(): boolean;
 }
 
 /**
@@ -83,6 +104,8 @@ export class Designer {
   wallHeight: HeightClass = 'medium';
   towerShape: TowerShape = 'square';
   towerHeight: HeightClass = 'medium';
+  extra: ExtraId = 'slits';
+  troop: TroopType = 'archer';
   notice: Notice | null = null;
 
   private hover: Tile | null = null;
@@ -139,7 +162,19 @@ export class Designer {
   press(tile: Tile | null): void {
     if (!tile) return;
     this.notice = null;
+    if (this.host.locked()) {
+      this.notice = { text: 'Nothing can be changed while the battle is on (classic control)', bad: true };
+      return;
+    }
     switch (this.tool) {
+      case 'troops':
+        this.post(tile);
+        break;
+      case 'extras':
+        this.painting = true;
+        this.painted.clear();
+        this.paint(tile);
+        break;
       case 'wall':
         this.dragFrom = tile;
         break;
@@ -244,6 +279,17 @@ export class Designer {
     if (this.painted.has(key) || !inBounds(this.host.base, tile.x, tile.y)) return;
     this.painted.add(key);
     const { base, plan } = this.host;
+    if (this.tool === 'extras') {
+      const r = toggleExtra(plan, tile.x, tile.y, this.extra);
+      if (r.problem) {
+        if (this.painted.size === 1) this.notice = { text: r.problem, bad: true };
+        return;
+      }
+      if (r.added && r.piece) reopenPiece(this.host.sim.works, r.piece.id);
+      this.notice = { text: `${EXTRAS[this.extra].name} ${r.added ? 'added' : 'taken off'}`, bad: false };
+      this.changed([]);
+      return;
+    }
     if (this.tool === 'remove') {
       if (removePieceAt(plan, tile.x, tile.y)) this.changed([]);
       else if (clearEarthwork(base, plan, tile.x, tile.y)) this.changed([tile]);
@@ -254,6 +300,18 @@ export class Designer {
     else this.changed(result.changed.map(([x, y]) => ({ x, y })));
   }
 
+  private post(tile: Tile): void {
+    const { sim } = this.host;
+    if (this.sheer) {
+      if (!removePost(sim.defence, tile.x, tile.y, this.troop) && !removePost(sim.defence, tile.x, tile.y))
+        this.notice = { text: 'Nobody is posted here', bad: true };
+      else this.notice = { text: 'Post taken off', bad: false };
+      return;
+    }
+    const problem = addPost(sim.map, sim.plan, sim.economy, sim.defence, this.troop, tile.x, tile.y);
+    this.notice = problem ? { text: problem, bad: true } : { text: `${UNITS[this.troop].name} posted here`, bad: false };
+  }
+
   /** Lines for the readout about the hovered tile: the piece there, or what would happen on click. */
   hoverLines(): Line[] {
     const h = this.hover;
@@ -261,10 +319,27 @@ export class Designer {
     const view = this.host.view();
     const lines: Line[] = [];
     const there = pieceAt(view, h.x, h.y);
-    if (there && (this.tool === 'look' || this.tool === 'remove')) {
+    if (there && (this.tool === 'look' || this.tool === 'remove' || this.tool === 'extras' || this.tool === 'troops')) {
       lines.push({ text: pieceStats(view, there).name, cls: 'head' }, ...this.host.buildLines(there), ...statLines(pieceStats(view, there)));
       const problem = this.host.report().problems.find((p) => p.piece.id === there.id);
       if (problem) lines.push({ text: problem.text, cls: 'bad' });
+    }
+    if (this.tool === 'troops') {
+      const { sim } = this.host;
+      const here = postsAt(sim.defence, h.x, h.y);
+      if (here.length > 0)
+        lines.push({
+          text: `Posted here: ${(['archer', 'swordsman'] as const).map((t) => ({ t, n: here.filter((p) => p.type === t).length })).filter((c) => c.n > 0).map((c) => `${c.n} ${(c.n === 1 ? UNITS[c.t].name : UNITS[c.t].plural).toLowerCase()}`).join(', ')}`,
+        });
+      if (!this.notice) {
+        const problem = postProblem(sim.map, sim.plan, sim.economy, sim.defence, this.troop, h.x, h.y);
+        lines.push(problem ? { text: problem, cls: 'bad' } : { text: `Click to post ${this.troop === 'archer' ? 'an archer' : 'a swordsman'} here`, cls: 'good' });
+        if (here.length > 0) lines.push({ text: 'Shift-click to take one off', cls: 'dim' });
+      }
+    }
+    if (this.tool === 'extras' && !this.notice && there) {
+      const has = !!there[this.extra];
+      lines.push({ text: has ? `Click to take off the ${EXTRAS[this.extra].name.toLowerCase()}` : `Click to add ${EXTRAS[this.extra].name.toLowerCase()} (${formatCost(EXTRAS[this.extra].cost)})`, cls: 'good' });
     }
     if (this.notice) lines.push({ text: this.notice.text, cls: this.notice.bad ? 'bad' : 'good' });
     else {
@@ -279,7 +354,7 @@ export class Designer {
   updatePanel(): void {
     const report = this.host.report();
     const p = this.preview();
-    const key = JSON.stringify([this.tool, this.thickness, this.wallHeight, this.towerShape, this.towerHeight, this.hover, report, p?.specs, this.clearArmed]);
+    const key = JSON.stringify([this.tool, this.thickness, this.wallHeight, this.towerShape, this.towerHeight, this.extra, this.troop, this.hover, report, p?.specs, this.clearArmed, this.host.sim.defence.posts.length, this.host.sim.economy.troops]);
     if (key === this.panelKey) return;
     this.panelKey = key;
 
@@ -307,6 +382,24 @@ export class Designer {
     const view = this.host.view();
     const tool = TOOLS.find((t) => t.id === this.tool);
     const lines: Line[] = [{ text: tool?.name ?? '', cls: 'head' }, { text: tool?.help ?? '', cls: 'dim' }];
+    if (this.tool === 'extras') {
+      for (const id of Object.keys(EXTRAS) as ExtraId[])
+        lines.push({ text: EXTRAS[id].name, cls: 'head' }, { text: EXTRAS[id].note }, { text: `Cost per piece: ${formatCost(EXTRAS[id].cost)}`, cls: 'dim' });
+      return lines;
+    }
+    if (this.tool === 'troops') {
+      const { sim } = this.host;
+      for (const t of ['archer', 'swordsman'] as const) {
+        const posted = sim.defence.posts.filter((p) => p.type === t).length;
+        lines.push(
+          { text: UNITS[t].plural, cls: 'head' },
+          { text: TROOPS[t].note, cls: 'dim' },
+          { text: `${posted} posted · ${sim.economy.troops[t]} in the garrison` },
+        );
+      }
+      lines.push({ text: 'Hire soldiers in the Defence tab.', cls: 'dim' });
+      return lines;
+    }
     if (this.tool === 'raise' || this.tool === 'lower') {
       const raise = this.tool === 'raise';
       lines.push(
@@ -364,6 +457,10 @@ export class Designer {
         choice('Shape', TOWER_SHAPE, this.towerShape, (v) => (this.towerShape = v), this),
         choice('Height', TOWER_HEIGHT, this.towerHeight, (v) => (this.towerHeight = v), this),
       );
+    } else if (this.tool === 'extras') {
+      parts.push(choice('Extra', EXTRAS, this.extra, (v) => (this.extra = v), this));
+    } else if (this.tool === 'troops') {
+      parts.push(choice('Post', { archer: UNITS.archer, swordsman: UNITS.swordsman }, this.troop, (v) => (this.troop = v), this));
     }
     this.toolsEl.replaceChildren(...parts);
   }

@@ -4,8 +4,13 @@ import { simConfig } from './data/config';
 import { formatDate } from './sim/calendar';
 import { pieceAt, pieceLevels, planReport, viewPlan, type Piece, type PlanReport, type PlanView } from './sim/castle';
 import { FixedStepLoop } from './sim/loop';
-import { createSim, stepSim, today, type SimState } from './sim/state';
+import { createSim, raidNow, stepSim, today, type SimState, type TickEvents } from './sim/state';
+import { findPath, landCost } from './sim/path';
+import { footprint } from './sim/castle';
 import { inBounds } from './sim/terrain';
+import { drawBattle } from './render/battleArt';
+import { DefencePanel } from './ui/defencePanel';
+import { ReportView } from './ui/reportView';
 import { pieceProgress, summariseWorks, type WorksSummary } from './sim/works';
 import { ProceduralAssets } from './render/assets';
 import { Camera } from './render/camera';
@@ -26,13 +31,18 @@ import { TopBar } from './ui/topBar';
 import { WorkersPanel } from './ui/workersPanel';
 import { WorksPanel } from './ui/worksPanel';
 
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 async function start(): Promise<void> {
   const host = document.getElementById('app');
   const topEl = document.getElementById('topbar');
   const readoutEl = document.getElementById('readout');
   const toolsEl = document.getElementById('tools');
   const panelEl = document.getElementById('panel');
-  if (!host || !topEl || !readoutEl || !toolsEl || !panelEl) throw new Error('Missing page elements');
+  const reportEl = document.getElementById('report');
+  if (!host || !topEl || !readoutEl || !toolsEl || !panelEl || !reportEl) throw new Error('Missing page elements');
 
   const app = new Application();
   await app.init({ resizeTo: host, background: 0x1b1f24, antialias: true });
@@ -46,14 +56,24 @@ async function start(): Promise<void> {
   let summary: WorksSummary = summariseWorks(sim.map, sim.plan, sim.economy, sim.works, 0);
 
   // Changes reported by the sim since the last frame.
-  const pending = { land: new Set<number>(), pieces: false, newDay: false, newMonth: false };
+  const pending = { land: new Set<number>(), pieces: false, newDay: false, newMonth: false, battleStarted: false, battleEnded: false };
+  const note = (e: TickEvents) => {
+    for (const t of e.land) pending.land.add(t);
+    pending.pieces ||= e.pieces;
+    pending.newDay ||= e.newDay;
+    pending.newMonth ||= e.newMonth;
+    pending.battleStarted ||= e.battleStarted;
+    pending.battleEnded ||= e.battleEnded;
+    return e;
+  };
   const loop = new FixedStepLoop(1000 / simConfig.ticksPerSecond, () => {
     for (let i = 0; i < speed; i++) {
-      const e = stepSim(sim);
-      for (const t of e.land) pending.land.add(t);
-      pending.pieces ||= e.pieces;
-      pending.newDay ||= e.newDay;
-      pending.newMonth ||= e.newMonth;
+      const e = note(stepSim(sim));
+      // Stop at the start and end of a battle, so neither goes by unseen.
+      if (e.battleStarted || e.battleEnded) {
+        speed = 0;
+        break;
+      }
     }
   });
 
@@ -74,6 +94,7 @@ async function start(): Promise<void> {
   const art = new CastleArt(shownView());
   art.setShapes((x, y) => shapeAt[y * sim.map.width + x]);
   art.setProgress((p) => pieceProgress(sim.map, sim.works, p));
+  art.setRubble((p) => (sim.defence.battle?.pieces[p.id]?.breachedAt ?? null) !== null);
   const terrain = new TerrainView(shownMap(), shapes, new ProceduralAssets(app.renderer), art);
   const ghosts = new Graphics();
   const world = new Container();
@@ -82,6 +103,7 @@ async function start(): Promise<void> {
 
   /** Something changed: rebuild the plan snapshot and redraw what's needed. `land` lists tiles whose drawn height may have changed. */
   const refresh = (land: readonly Tile[] | 'all') => {
+    routes.clear();
     view = viewPlan(sim.map, sim.plan);
     report = planReport(sim.map, view);
     art.setView(shownView(), new Set(report.problems.map((p) => p.piece.id)));
@@ -120,6 +142,7 @@ async function start(): Promise<void> {
       { id: 'plan', name: 'Plan' },
       { id: 'works', name: 'Building' },
       { id: 'workers', name: 'Workers' },
+      { id: 'defence', name: 'Defence' },
       { id: 'reports', name: 'Reports' },
       { id: 'game', name: 'Game' },
     ] as const,
@@ -140,6 +163,10 @@ async function start(): Promise<void> {
         summary = summariseWorks(sim.map, sim.plan, sim.economy, sim.works, today(sim));
       },
       buildLines: (p) => buildLines(p),
+      get sim() {
+        return sim;
+      },
+      locked: () => sim.defence.battle !== null,
     },
     toolsEl,
     tabs.pages.plan,
@@ -178,9 +205,24 @@ async function start(): Promise<void> {
   const worksPanel = new WorksPanel(tabs.pages.works, game);
   const reportsPanel = new ReportsPanel(tabs.pages.reports, game);
   const gamePanel = new GamePanel(tabs.pages.game, game);
+  const reportView = new ReportView(reportEl);
+  const defencePanel = new DefencePanel(tabs.pages.defence, game, {
+    postTroops: () => designer.setTool('troops'),
+    raidNow: () => note(raidNow(sim)),
+    showReport: (r) => reportView.show(r),
+  });
 
   /** Readout lines about how the building of a piece is going. */
   function buildLines(p: Piece): Line[] {
+    const pc = sim.defence.battle?.pieces[p.id];
+    if (pc) {
+      if (pc.breachedAt !== null) return [{ text: `Breached ${Math.round(pc.breachedAt)} seconds into the battle`, cls: 'bad' }];
+      if (!pc.standing) return [{ text: 'Not yet half built: raiders walk straight over it', cls: 'bad' }];
+      return [
+        { text: `Holding: ${Math.round(pc.hp)} of ${pc.max} HP`, cls: pc.hp < pc.max * 0.5 ? 'bad' : pc.hp < pc.max ? 'warn' : 'good' },
+        { text: plural(sim.defence.battle?.units.filter((u) => u.on === p.id).length ?? 0, 'archer', 'archers') + ' on it', cls: 'dim' },
+      ];
+    }
     const progress = pieceProgress(sim.map, sim.works, p);
     if (progress >= 1) return [{ text: 'Built', cls: 'good' }];
     const est = summary.jobs.find((j) => j.job.key === `p${p.id}`);
@@ -226,6 +268,26 @@ async function start(): Promise<void> {
   app.canvas.addEventListener('pointerup', release);
   app.canvas.addEventListener('pointercancel', release);
 
+  /** Routes for carts, round walls and water; worked out once per plan change. */
+  const routes = new Map<string, [number, number][] | null>();
+  const route = (from: readonly [number, number], to: readonly [number, number]) => {
+    const key = `${from[0]},${from[1]}>${to[0]},${to[1]}`;
+    const cached = routes.get(key);
+    if (cached !== undefined) return cached;
+    const { map, plan } = sim;
+    const w = map.width;
+    const blocked = new Uint8Array(w * map.height);
+    for (const p of plan.pieces)
+      if (p.kind !== 'gatehouse' && pieceProgress(map, sim.works, p) >= 0.5) for (const [x, y] of footprint(p)) blocked[y * w + x] = 1;
+    const goal = (i: number) => Math.abs((i % w) - to[0]) + Math.abs(Math.floor(i / w) - to[1]) <= 1 && !blocked[i];
+    const path = inBounds(map, from[0], from[1])
+      ? findPath(map, from[1] * w + from[0], goal, to, (a, b) => (blocked[b] ? null : landCost(map, a, b)), 400)
+      : null;
+    const out = path ? path.map((i): [number, number] => [i % w, Math.floor(i / w)]) : null;
+    routes.set(key, out);
+    return out;
+  };
+
   /** Height of the drawn ground at any point, for standing figures on it. */
   const ground = (x: number, y: number) => {
     const tx = Math.round(x);
@@ -246,12 +308,13 @@ async function start(): Promise<void> {
         return camera.worldToScreen(p.sx, p.sy, app.screen.width, app.screen.height);
       },
       days(n: number) {
-        for (let i = 0; i < n * CALENDAR.ticksPerDay; i++) {
-          const e = stepSim(sim);
-          for (const t of e.land) pending.land.add(t);
-          pending.pieces ||= e.pieces;
-          pending.newDay ||= e.newDay;
-        }
+        for (let i = 0; i < n * CALENDAR.ticksPerDay; i++) note(stepSim(sim));
+      },
+      ticks(n: number) {
+        for (let i = 0; i < n; i++) note(stepSim(sim));
+      },
+      raidNow() {
+        note(raidNow(sim));
       },
       camera,
       game,
@@ -289,6 +352,20 @@ async function start(): Promise<void> {
       gamePanel.refresh();
       pending.newMonth = false;
     }
+    if (pending.battleStarted) {
+      pending.battleStarted = false;
+      speed = 0;
+      tabs.show('defence');
+      refresh([]);
+    }
+    if (pending.battleEnded) {
+      pending.battleEnded = false;
+      speed = 0;
+      summary = summariseWorks(sim.map, sim.plan, sim.economy, sim.works, today(sim));
+      refresh([]);
+      const last = sim.defence.reports[sim.defence.reports.length - 1];
+      if (last) reportView.show(last);
+    }
 
     const w = app.screen.width;
     const h = app.screen.height;
@@ -322,10 +399,15 @@ async function start(): Promise<void> {
     }
 
     terrain.clearActors();
-    drawWorkers({ layer: (d) => terrain.actorsFor(d), ground }, sim, performance.now());
+    const actors = { layer: (d: number) => terrain.actorsFor(d), ground, route };
+    drawWorkers(actors, sim, performance.now());
+    drawBattle(actors, sim, loop.alpha, performance.now());
 
     hud.update(sim, view.map, hovered, designer.hoverLines());
     topBar.update();
+    // Keep the tools clear of the top bar, which grows a line when raiders are about.
+    const toolsTop = `${Math.round(topEl.getBoundingClientRect().bottom + 8)}px`;
+    if (toolsEl.style.top !== toolsTop) toolsEl.style.top = toolsTop;
     switch (tabs.active) {
       case 'plan':
         designer.updatePanel();
@@ -335,6 +417,9 @@ async function start(): Promise<void> {
         break;
       case 'workers':
         workersPanel.update();
+        break;
+      case 'defence':
+        defencePanel.update();
         break;
       case 'reports':
         reportsPanel.update();

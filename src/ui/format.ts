@@ -28,7 +28,7 @@ export function statLines(s: PieceStats): Line[] {
         : { text: 'Too high for ladder crews', cls: 'good' },
     );
   }
-  out.push({ text: `Archer range bonus: +${s.rangeBonus} ${s.rangeBonus === 1 ? 'tile' : 'tiles'}` });
+  out.push({ text: `Archers on it reach ${s.range} tiles (${s.range - s.rangeBonus} + ${s.rangeBonus} for height)` });
   for (const n of s.notes) out.push({ text: n, cls: 'dim' });
   return out;
 }

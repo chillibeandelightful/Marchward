@@ -167,6 +167,12 @@ export function workDay(map: TerrainMap, plan: CastlePlan, econ: EconomyState, w
   forgetRemoved(plan, econ, works, jobs);
 
   for (const job of jobs) {
+    // A finished piece given an extra and then had it taken off again is finished already.
+    if (job.piece && TRADES.every((t) => job.done[t] >= job.need[t] - 1e-6)) {
+      works.pieces[job.piece.id] = { done: { ...job.done }, complete: true };
+      result.pieces = true;
+      continue;
+    }
     if (job.blocked) {
       works.status[job.key] = job.blocked;
       continue;
@@ -439,4 +445,10 @@ function warnings(econ: EconomyState, m: { stoneNeeded: number; timberNeeded: nu
   const spoil = Math.ceil(m.spoilNeeded - econ.stores.spoil);
   if (spoil > 0) out.push(`${spoil} more cartloads of spoil needed to raise ground`);
   return out;
+}
+
+/** A piece given more work (an extra added after it was finished) goes back on the building list. */
+export function reopenPiece(works: WorksState, id: number): void {
+  const rec = works.pieces[id];
+  if (rec) rec.complete = false;
 }

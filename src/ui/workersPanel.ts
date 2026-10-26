@@ -8,6 +8,7 @@ import {
   purchasePrice,
   setWanted,
   taxDue,
+  mouths,
   totalWorkers,
   type Purchase,
 } from '../sim/economy';
@@ -112,7 +113,7 @@ export class WorkersPanel {
     const n = totalWorkers(e);
     setText(
       this.totals,
-      `${n} on site · wages ${crowns(dailyWages(e, winter))} crowns a day${winter ? ' (half pay for winter)' : ''} · ${n * ECONOMY.rationsPerWorker} rations a day`,
+      `${n} on site · wages ${crowns(dailyWages(e, winter))} crowns a day${winter ? ' (half pay for winter)' : ''} · ${mouths(e) * ECONOMY.rationsPerWorker} rations a day (with the garrison)`,
     );
     const level = WAGE_LEVELS[e.wage];
     for (const w of Object.keys(WAGE_LEVELS) as WageLevel[]) setClass(this.wageButtons[w], w === e.wage ? 'active' : '');

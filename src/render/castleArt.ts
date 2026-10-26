@@ -2,6 +2,7 @@ import type { Graphics } from 'pixi.js';
 import { WALL_THICKNESS } from '../data/castle';
 import {
   footprint,
+  hasSlits,
   isCurtain,
   linked,
   pieceLevels,
@@ -77,6 +78,13 @@ export class CastleArt implements RowExtras {
     this.progress = progress;
   }
 
+  /** In battle: which pieces have been breached and lie in rubble. */
+  setRubble(rubble: (p: Piece) => boolean): void {
+    this.rubble = rubble;
+  }
+
+  private rubble: (p: Piece) => boolean = () => false;
+
   /** Built tiles hide the trees and stones that were there. */
   hidesDecor(x: number, y: number): boolean {
     return this.view.occupant[y * this.view.map.width + x] !== 0;
@@ -88,7 +96,8 @@ export class CastleArt implements RowExtras {
     for (const p of this.view.plan.pieces) {
       if (frontDiagonal(p) !== diagonal) continue;
       const done = this.progress(p);
-      if (this.problems.has(p.id)) this.drawPiece(g, p, PROBLEM);
+      if (this.rubble(p)) this.drawRubble(g, p);
+      else if (this.problems.has(p.id)) this.drawPiece(g, p, PROBLEM);
       else if (done >= 1) this.drawPiece(g, p, STONE);
       else {
         // The plan as a pale model, with the built part in stone and scaffolding over it.
@@ -112,15 +121,36 @@ export class CastleArt implements RowExtras {
         this.drawWall(g, p, base, top, pal, finished);
         break;
       case 'tower':
-        if (p.shape === 'round') drawRoundTower(g, p.x, p.y, 0.42, base, top, pal, finished);
-        else drawSquareTower(g, p.x, p.y, 0.42, base, top, pal, finished);
+        if (p.shape === 'round') drawRoundTower(g, p.x, p.y, 0.42, base, top, pal, finished, hasSlits(p));
+        else drawSquareTower(g, p.x, p.y, 0.42, base, top, pal, finished, hasSlits(p));
         break;
       case 'gatehouse':
         drawGatehouse(g, p.x, p.y, p.axis, base, top, pal, finished);
+        if (finished && p.slits) {
+          const b: Box = { x0: p.x - 0.47, y0: p.y - 0.47, x1: p.x + 0.47, y1: p.y + 0.47, base, top };
+          slit(g, b, p.axis === 'x' ? 'left' : 'right', p.axis === 'x' ? p.x : p.y, top - 1.1, 0.04, 0.55, pal.dark);
+        }
         break;
       case 'keep':
         drawKeep(g, p.x, p.y, base, top, pal, finished);
         break;
+    }
+    if (finished && p.cauldron) drawCauldron(g, p.x, p.y, top, pal);
+  }
+
+  /** A breached piece: a low heap of fallen stone on its footings. */
+  private drawRubble(g: Graphics, p: PieceSpec): void {
+    const base = this.baseLevel(p) - SINK;
+    for (const [x, y] of footprint(p)) {
+      const blocks: Box[] = [];
+      for (let i = 0; i < 9; i++) {
+        const u = ((i * 37) % 9) / 9 - 0.45;
+        const v = ((i * 53) % 9) / 9 - 0.45;
+        const h = 0.25 + ((i * 29) % 5) * 0.08;
+        blocks.push({ x0: x + u * 0.8 - 0.1, y0: y + v * 0.8 - 0.1, x1: x + u * 0.8 + 0.1, y1: y + v * 0.8 + 0.1, base, top: base + SINK + h });
+      }
+      blocks.sort((a, b) => a.x0 + a.y0 - (b.x0 + b.y0));
+      for (const b of blocks) drawBox(g, b, tinted(STONE, 0x5a5040, 0.35));
     }
   }
 
@@ -223,6 +253,18 @@ export class CastleArt implements RowExtras {
           }));
     for (const b of boxes) drawBox(g, b, pal, true);
     if (!finished) return;
+    if (p.slits)
+      for (const [i, [dx, dy]] of arms.entries()) {
+        const b = boxes[i] as Box;
+        // Slits on the visible face of each arm, a little below the walk.
+        if (dx !== 0) slit(g, b, 'left', (b.x0 + b.x1) / 2, top - 0.95, 0.035, 0.5, pal.dark);
+        if (dy !== 0) slit(g, b, 'right', (b.y0 + b.y1) / 2, top - 0.95, 0.035, 0.5, pal.dark);
+      }
+    if (p.slits && arms.length === 0) {
+      const b = boxes[0] as Box;
+      slit(g, b, 'left', x, top - 0.95, 0.035, 0.5, pal.dark);
+      slit(g, b, 'right', y, top - 0.95, 0.035, 0.5, pal.dark);
+    }
     const merlons: Box[] = [];
     arms.forEach(([dx], i) => {
       const b = boxes[i] as Box;
@@ -329,18 +371,26 @@ function slit(g: Graphics, b: Box, side: 'left' | 'right', at: number, level: nu
   g.poly(pts).fill(colour);
 }
 
-function drawSquareTower(g: Graphics, x: number, y: number, r: number, base: number, top: number, pal: Palette, finished: boolean): void {
+/** A covered pot of oil on a hoist at the front corner of a piece's top. */
+function drawCauldron(g: Graphics, x: number, y: number, top: number, pal: Palette): void {
+  const [cx, cy] = pt(x + 0.32, y + 0.32, top + MERLON_H) as [number, number];
+  g.moveTo(cx - 5, cy).lineTo(cx, cy - 9).lineTo(cx + 5, cy).stroke({ width: 1, color: 0x4a3a28 });
+  g.ellipse(cx, cy - 2.5, 4, 3).fill(0x2b2622).stroke({ width: 0.6, color: pal.dark });
+  g.ellipse(cx, cy - 4.5, 3, 1.1).fill(0x6b4a1a);
+}
+
+function drawSquareTower(g: Graphics, x: number, y: number, r: number, base: number, top: number, pal: Palette, finished: boolean, slits: boolean): void {
   const b: Box = { x0: x - r, y0: y - r, x1: x + r, y1: y + r, base, top };
   drawBox(g, b, pal, true);
   if (!finished) return;
-  for (let lv = top - 1; lv > base + 0.6; lv -= 1.4) {
+  for (let lv = top - 1; slits && lv > base + 0.6; lv -= 1.4) {
     slit(g, b, 'left', x, lv - 0.3, 0.04, 0.55, pal.dark);
     slit(g, b, 'right', y, lv - 0.3, 0.04, 0.55, pal.dark);
   }
   drawMerlons(g, ringMerlons(b), pal);
 }
 
-function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: number, top: number, pal: Palette, finished: boolean): void {
+function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: number, top: number, pal: Palette, finished: boolean, slits: boolean): void {
   const rx = (r * TILE_W) / Math.SQRT2;
   const ry = (r * TILE_H) / Math.SQRT2;
   const c0 = isoToScreen(x, y, base);
@@ -364,7 +414,7 @@ function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: numb
     g.ellipse(c1.sx, c1.sy, rx, ry).fill(pal.top).stroke({ width: 0.8, color: pal.dark, alpha: 0.35 });
     return;
   }
-  for (let lv = top - 1; lv > base + 0.6; lv -= 1.4) {
+  for (let lv = top - 1; slits && lv > base + 0.6; lv -= 1.4) {
     const s = isoToScreen(x, y, lv - 0.3);
     g.rect(s.sx - rx * 0.45 - 1.5, s.sy + ry * 0.85 - 9, 3, 9).fill(pal.dark);
     g.rect(s.sx + rx * 0.45 - 1.5, s.sy + ry * 0.85 - 9, 3, 9).fill(pal.dark);

@@ -1,3 +1,4 @@
+import { TROOP_TYPES, TROOPS, type TroopType } from '../data/combat';
 import { ECONOMY, WAGE_LEVELS, WORKER_TYPES, WORKERS, type WageLevel, type WorkerType } from '../data/economy';
 import type { Rng } from './rng';
 
@@ -28,6 +29,9 @@ export interface EconomyState {
   workers: Record<WorkerType, number>;
   /** How many of each the player wants; hiring fills the gap over time. */
   wanted: Record<WorkerType, number>;
+  /** The garrison, and how many soldiers of each kind are wanted. */
+  troops: Record<TroopType, number>;
+  troopsWanted: Record<TroopType, number>;
   /** Today's stores couldn't feed everyone, or pay everyone. */
   hungry: boolean;
   unpaid: boolean;
@@ -45,11 +49,37 @@ export function createEconomy(): EconomyState {
     levy: false,
     workers: none(),
     wanted: none(),
+    troops: startingTroops(),
+    troopsWanted: startingTroops(),
     hungry: false,
     unpaid: false,
     thisMonth: emptyLedger(),
     lastMonth: emptyLedger(),
   };
+}
+
+export function startingTroops(): Record<TroopType, number> {
+  return Object.fromEntries(TROOP_TYPES.map((t) => [t, TROOPS[t].start])) as Record<TroopType, number>;
+}
+
+/** Everyone who eats from the stores: workers and soldiers. */
+export function mouths(e: EconomyState): number {
+  return totalWorkers(e) + totalTroops(e);
+}
+
+export function totalTroops(e: EconomyState): number {
+  return TROOP_TYPES.reduce((n, t) => n + e.troops[t], 0);
+}
+
+/** Soldiers the player pays for: everyone beyond the garrison the crown pays for. */
+export function paidTroops(e: EconomyState, type: TroopType): number {
+  return Math.max(0, e.troops[type] - TROOPS[type].crownPays);
+}
+
+/** Set how many soldiers of a kind you want. Fewer stands the extra down at once. */
+export function setTroopsWanted(e: EconomyState, type: TroopType, n: number): void {
+  e.troopsWanted[type] = Math.max(0, Math.min(60, Math.round(n)));
+  e.troops[type] = Math.min(e.troops[type], e.troopsWanted[type]);
 }
 
 export function emptyLedger(): Ledger {
@@ -80,7 +110,10 @@ export function efficiency(e: EconomyState): number {
 /** Crowns per day for the current workforce. */
 export function dailyWages(e: EconomyState, winter: boolean): number {
   const pay = WAGE_LEVELS[e.wage].pay * (winter ? ECONOMY.winterPay : 1);
-  return WORKER_TYPES.reduce((sum, t) => sum + e.workers[t] * WORKERS[t].wage * pay, 0);
+  const workers = WORKER_TYPES.reduce((sum, t) => sum + e.workers[t] * WORKERS[t].wage * pay, 0);
+  // Soldiers are paid in full all year: raiders don't wait for spring to be watched for.
+  const troops = TROOP_TYPES.reduce((sum, t) => sum + paidTroops(e, t) * TROOPS[t].wage * WAGE_LEVELS[e.wage].pay, 0);
+  return workers + troops;
 }
 
 /** Expected arrivals per day for a worker type while more are wanted. */
@@ -104,6 +137,13 @@ export function hire(e: EconomyState, rng: Rng, winter: boolean): void {
     const arrivals = Math.floor(expected) + (rng.next() < expected % 1 ? 1 : 0);
     e.workers[t] += Math.min(short, arrivals);
   }
+  for (const t of TROOP_TYPES) {
+    const short = e.troopsWanted[t] - e.troops[t];
+    if (short <= 0) continue;
+    const expected = TROOPS[t].hireRate * WAGE_LEVELS[e.wage].hiring * (0.5 + e.standing / 100);
+    const arrivals = Math.floor(expected) + (rng.next() < expected % 1 ? 1 : 0);
+    e.troops[t] += Math.min(short, arrivals);
+  }
 }
 
 /** Pay wages and feed everyone for a day; anyone hungry or unpaid may walk off. Returns how many left. */
@@ -114,7 +154,7 @@ export function payAndFeed(e: EconomyState, rng: Rng, winter: boolean): number {
   e.stores.crowns -= paid;
   e.thisMonth.wages -= paid;
 
-  const eat = totalWorkers(e) * ECONOMY.rationsPerWorker;
+  const eat = mouths(e) * ECONOMY.rationsPerWorker;
   e.hungry = e.stores.food < eat;
   e.stores.food = Math.max(0, e.stores.food - eat);
 
@@ -125,6 +165,13 @@ export function payAndFeed(e: EconomyState, rng: Rng, winter: boolean): number {
       for (let i = 0; i < e.workers[t]; i++) if (rng.next() < ECONOMY.quitChance) quit++;
       e.workers[t] -= quit;
       left += quit;
+    }
+  // Unpaid or hungry soldiers desert too, but they don't count as workers walking off.
+  if (e.hungry || e.unpaid)
+    for (const t of TROOP_TYPES) {
+      let quit = 0;
+      for (let i = 0; i < paidTroops(e, t); i++) if (rng.next() < ECONOMY.quitChance) quit++;
+      e.troops[t] -= quit;
     }
   return left;
 }

@@ -14,6 +14,7 @@ import {
   type Thickness,
   type TowerShape,
 } from '../data/castle';
+import { COMBAT, EXTRAS, type ExtraId } from '../data/combat';
 import { MAX_HEIGHT } from '../data/terrain';
 import { canStep, heightAt, inBounds, NEIGHBOURS, stepBetween, terrainAt, type TerrainMap } from './terrain';
 
@@ -21,12 +22,17 @@ export type PieceKind = 'wall' | 'tower' | 'gatehouse' | 'keep';
 /** The way a gatehouse passage runs: 'x' means you walk through it along the x axis. */
 export type Axis = 'x' | 'y';
 
+/** Extras added to a wall, tower or gatehouse with the Extras tool. */
+export type PieceExtras = Partial<Record<ExtraId, boolean>>;
+
 /** A piece to place. (x, y) is its tile, or the back corner of the keep's footprint. */
-export type PieceSpec =
+export type PieceSpec = (
   | { kind: 'wall'; x: number; y: number; thickness: Thickness; height: HeightClass }
   | { kind: 'tower'; x: number; y: number; shape: TowerShape; height: HeightClass }
   | { kind: 'gatehouse'; x: number; y: number; axis: Axis }
-  | { kind: 'keep'; x: number; y: number };
+  | { kind: 'keep'; x: number; y: number }
+) &
+  PieceExtras;
 
 export type Piece = PieceSpec & { id: number };
 
@@ -340,7 +346,48 @@ export function pieceCost(map: TerrainMap, p: PieceSpec): Cost {
       break;
   }
   for (const [x, y] of footprint(p)) if (inBounds(map, x, y)) cost = addCost(cost, terrainAt(map, x, y).groundwork);
+  for (const e of Object.keys(EXTRAS) as ExtraId[]) if (p[e]) cost = addCost(cost, EXTRAS[e].cost);
   return cost;
+}
+
+/** Can this piece take extras? The keep has its own arrow slits and needs none. */
+export function takesExtras(p: PieceSpec): boolean {
+  return p.kind !== 'keep';
+}
+
+/** Whether a piece has arrow slits: added as an extra, or built in (the keep). */
+export function hasSlits(p: PieceSpec): boolean {
+  return p.kind === 'keep' || !!p.slits;
+}
+
+/** Strength in HP when fully built. */
+export function pieceHp(p: PieceSpec): number {
+  switch (p.kind) {
+    case 'wall':
+      return WALL_THICKNESS[p.thickness].hp;
+    case 'tower':
+      return TOWER_SHAPE[p.shape].hp;
+    case 'gatehouse':
+      return GATEHOUSE.hp;
+    case 'keep':
+      return KEEP.hp;
+  }
+}
+
+/** Share of battering damage a piece takes (round towers shrug some of it off). */
+export function batterTaken(p: PieceSpec): number {
+  return p.kind === 'tower' ? TOWER_SHAPE[p.shape].batterTaken : 1;
+}
+
+/** Add or take away an extra on the piece at a tile. Returns a problem, or null if done. */
+export function toggleExtra(plan: CastlePlan, x: number, y: number, extra: ExtraId): { problem: string | null; piece: Piece | null; added: boolean } {
+  const piece = plan.pieces.find((p) => footprint(p).some(([px, py]) => px === x && py === y)) ?? null;
+  if (!piece) return { problem: 'Point at a wall, tower or gatehouse', piece, added: false };
+  if (!takesExtras(piece)) return { problem: 'The keep already has arrow slits, and needs no cauldron', piece, added: false };
+  const added = !piece[extra];
+  if (added) piece[extra] = true;
+  else delete piece[extra];
+  return { problem: null, piece, added };
 }
 
 export function pieceName(p: PieceSpec): string {
@@ -382,6 +429,8 @@ export interface PieceStats {
   ladderable: boolean;
   /** Extra archer range in tiles. */
   rangeBonus: number;
+  /** How far archers on it can shoot at attackers on the approach, in tiles. */
+  range: number;
   notes: string[];
 }
 
@@ -409,27 +458,25 @@ export function pieceStats(view: PlanView, p: PieceSpec): PieceStats {
   const above = aboveApproach ?? levels;
 
   const notes: string[] = [];
-  let hp: number;
+  const hp = pieceHp(p);
   switch (p.kind) {
     case 'wall':
-      hp = WALL_THICKNESS[p.thickness].hp;
       break;
     case 'tower': {
       const shape = TOWER_SHAPE[p.shape];
-      hp = shape.hp;
       if (shape.batterTaken < 1) notes.push(`Takes ${Math.round((1 - shape.batterTaken) * 100)}% less battering damage`);
       if (shape.sapTimeMult > 1) notes.push(`Sappers need ${shape.sapTimeMult}× as long to undermine it`);
       break;
     }
     case 'gatehouse':
-      hp = GATEHOUSE.hp;
-      notes.push('Opens and shuts in battle to let your troops out and in');
+      notes.push('Your troops can pass through; raiders have to batter the gate down');
       break;
     case 'keep':
-      hp = KEEP.hp;
-      notes.push('Required. Should stand inside the walls');
+      notes.push('Required. Should stand inside the walls. Raiders make for it to plunder it');
+      notes.push('Built-in arrow slits for the archers on it');
       break;
   }
+  for (const e of Object.keys(EXTRAS) as ExtraId[]) if (p[e]) notes.push(`${EXTRAS[e].name}: ${EXTRAS[e].note.charAt(0).toLowerCase()}${EXTRAS[e].note.slice(1)}`);
   if (tiles.some(([x, y]) => inBounds(map, x, y) && !terrainAt(map, x, y).canLower)) notes.push('On rock: cannot be undermined');
   if (outside.length === 0 && open.length > 0 && isCurtain(p.kind)) notes.push('Measured from inside: no outside ground next to it');
 
@@ -440,7 +487,8 @@ export function pieceStats(view: PlanView, p: PieceSpec): PieceStats {
     ground,
     aboveApproach,
     ladderable: above <= LADDER_REACH,
-    rangeBonus: RANGE_BONUS[Math.min(above, RANGE_BONUS.length - 1)] ?? 0,
+    rangeBonus: rangeBonus(above),
+    range: COMBAT.bowRange + rangeBonus(above),
     notes,
   };
 }
@@ -557,6 +605,11 @@ function floodOutside(map: TerrainMap, occupant: Int32Array): Uint8Array {
     }
   }
   return out;
+}
+
+/** Extra archer range in tiles for standing this many levels above the target. */
+export function rangeBonus(levelsAbove: number): number {
+  return RANGE_BONUS[Math.max(0, Math.min(Math.floor(levelsAbove), RANGE_BONUS.length - 1))] ?? 0;
 }
 
 function clampHeight(h: number): number {
