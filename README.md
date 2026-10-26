@@ -23,7 +23,7 @@ npm test          # Vitest
 npm run build     # type-check and production build into dist/
 ```
 
-Add `?seed=N` to the page URL to reproduce a specific run.
+Add `?seed=N` to the page URL to reproduce a specific run (no visible effect yet: the M1 test site is hand-made).
 
 ## Deploying
 `.github/workflows/deploy.yml` tests and builds every PR, and on every push to `main` also publishes `dist/` to GitHub Pages. One-time setup: in the repo's Settings → Pages, set **Source** to **GitHub Actions**. Pages needs the repo to be public on a free GitHub plan.

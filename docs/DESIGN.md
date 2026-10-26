@@ -144,4 +144,8 @@ At campaign start, the player designs a banner:
 Record design decisions made during development here, with a date and a one-line reason.
 - 2026-10-26: Simulation runs at a fixed 30 ticks per second; enough for smooth movement while keeping step counts small for testing.
 - 2026-10-26: RNG is mulberry32, whose whole state is one 32-bit number, so saves can store it exactly.
+- 2026-10-26: Sites are authored as an ordered list of features (hills, plateaus, terrain patches, rivers, roads) rather than tile-by-tile, so they stay readable and easy to tweak. Hills built this way only ever make slopes; plateaus make cliffs.
+- 2026-10-26: "Ford" is its own terrain type with the same rules as shallow water, so a road crossing can be drawn and named; it appears wherever a road crosses water.
+- 2026-10-26: Slopes are a drawing effect: each tile corner takes the average height of the neighbouring tiles within one level, so slopes become smooth ramps. Rules still use whole tile heights.
+- 2026-10-26: One height level is drawn 16 px tall (half a tile's height), tall enough to read cliffs and slopes at a glance.
 
