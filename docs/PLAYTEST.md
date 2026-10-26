@@ -31,3 +31,17 @@ After each milestone, add a section:
 **Known issues:** nothing moves yet; the land is just for looking at. Pointing at a tree top shows the ground tile under the pointer, which may be the tile behind the tree. No touch pinch-to-zoom (mouse and keyboard only).
 **Feedback:** Approved. Terrain types are easy to tell apart visually (marsh, grassland, hill, rocky ground, shallow and deep water, trees, river), and hovering confirms the type. Open question: the map's scale. In older games of this kind the map felt needlessly large when the castle was the only thing on it and nothing else could be controlled.
 
+## M2 – Castle designer (2026-10-26)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- **Moving around changed a little:** the left mouse button now builds, so drag with the **right** mouse button (or use W A S D / arrow keys) to move. In the Look tool (key 1) left-drag still moves the view. Wheel or + / − zooms as before.
+- **Pick a tool** with the buttons at the top left or keys 1 to 8: Look, Wall, Tower, Gatehouse, Keep, Raise, Lower, Remove. Wall and Tower show their options (thickness, height, square or round) under the buttons.
+- **Before you place anything**, point at a tile: the panel on the right shows that piece's strength, height, whether ladder crews could climb it from the ground next to it, the archer range bonus, and its cost on that exact tile. The box at the bottom left says "Click to place" in green, or why you can't build there in red.
+- **Build a castle on the central hill:** drag out a ring of walls (the whole line's cost shows while you drag), click a Tower onto each corner (it replaces that bit of wall), click a Gatehouse into one wall where the road crosses (press R if the passage faces the wrong way), and put the Keep inside. The checklist in the panel turns green when the keep is enclosed and nothing is wrong.
+- **Try the rules:** run a wall up the rocky crag's cliff (refused); place the keep on sloping ground (refused, needs level ground); build on the river (refused); put a wall straight across the gate passage (refused). Build on marsh or forest and compare the cost with grass.
+- **Earthworks:** with Raise or Lower, click or drag over tiles. Each click is one level (amber chevrons up, blue chevrons down) and the land is shown as it will be. Dig a ditch outside a wall and point at the wall in Look: its height above the approach goes up, and it may become too high for ladders. The panel shows the spoil balance (digging makes spoil, raising uses it).
+- Point at any piece with Look to see its numbers. Remove (key 8) deletes pieces and earthwork marks; "Clear plan" (click twice) starts over.
+- **The questions for this milestone:** is designing fun and clear? Are the stats understandable?
+**Known issues:** nothing gets built yet; the plan is a design only (workers, time and money come in M3). The design is lost when the page reloads (saving comes in M3). Previews of new pieces float on top, so they aren't hidden by hills in front. Ground right behind a tall wall can be hard to point at; zoom in or point at the wall itself. Mouse and keyboard only.
+**Feedback:**
+
