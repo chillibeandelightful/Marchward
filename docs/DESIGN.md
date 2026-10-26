@@ -148,4 +148,5 @@ Record design decisions made during development here, with a date and a one-line
 - 2026-10-26: "Ford" is its own terrain type with the same rules as shallow water, so a road crossing can be drawn and named; it appears wherever a road crosses water.
 - 2026-10-26: Slopes are a drawing effect: each tile corner takes the average height of the neighbouring tiles within one level, so slopes become smooth ramps. Rules still use whole tile heights.
 - 2026-10-26: One height level is drawn 16 px tall (half a tile's height), tall enough to read cliffs and slopes at a glance.
+- 2026-10-26: Open question from the M1 playtest: is 64×64 too big? The playtester recalled maps in older games feeling needlessly large when only the castle mattered. Revisit in M2–M4 once a castle and raids show how much land is actually used; shrinking the site or making the surroundings matter (village, approaches, earthworks) are both options.
 
