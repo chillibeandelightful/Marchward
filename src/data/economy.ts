@@ -1,8 +1,8 @@
 /** Calendar, workers, wages, prices and income. Starting values to tune in playtesting. */
 
 export const CALENDAR = {
-  /** Sim ticks in one game day (30 ticks a second, so a day lasts two thirds of a second at 1×). */
-  ticksPerDay: 20,
+  /** Sim ticks in one game day (30 ticks a second, so a day lasts one second at 1×). */
+  ticksPerDay: 30,
   daysPerMonth: 30,
   /** The year starts in spring, when building can begin. */
   months: ['March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February'],
@@ -74,7 +74,7 @@ export const WORKERS: Record<WorkerType, WorkerKind> = {
     plural: 'Quarrymen',
     wage: 2,
     rates: {},
-    stonePerDay: 2,
+    stonePerDay: 1,
     hireRate: 0.5,
     note: 'Cuts stone for the store all year except winter. Much cheaper than buying it.',
   },
@@ -125,7 +125,7 @@ export const CREW_LIMIT: Record<'wall' | 'tower' | 'gatehouse' | 'keep' | 'earth
 };
 
 export const ECONOMY = {
-  start: { crowns: 6000, stone: 150, timber: 80, food: 600, spoil: 0, standing: 70 },
+  start: { crowns: 8000, stone: 150, timber: 80, food: 600, spoil: 0, standing: 70 },
   /** Rations eaten per worker per day. */
   rationsPerWorker: 1,
   /** Warn when the food store will last fewer days than this. */
@@ -142,9 +142,9 @@ export const ECONOMY = {
    * The bonus grows with the worker-days of finished pieces, up to the full amount at `taxFullCastle`
    * (about a modest walled castle), so it rewards building, not planning small.
    */
-  taxBase: 5000,
+  taxBase: 7000,
   taxPerCompletion: 5000,
-  taxFullCastle: 1200,
+  taxFullCastle: 3000,
   /** Harvest dues paid in food on the first day of autumn: base × standing. */
   harvestFood: 2500,
   /** A levy on the first of the month brings in crowns but costs standing. */

@@ -59,5 +59,4 @@ After each milestone, add a section:
 - **Save and load** in the **Game** tab. The game also autosaves on the first of each month. Reload the page and use Load to carry on.
 - **The questions for this milestone:** does building feel satisfying? Is it clear what's slowing you down?
 **Known issues:** workers walk in straight lines (pathfinding comes in M4) and are drawn over walls they stand behind in a few spots. Removing a piece, even a finished one, removes it with no refund. Job order is automatic (earthworks first, then pieces in the order you placed them); there's no way to set priorities yet. The balance numbers are first guesses. Mouse and keyboard only.
-**Feedback:**
-
+**Feedback:** Approved: it all works, and running out of money or materials had a clear knock-on effect. The camp was a nice touch. Two notes: (1) construction went far too fast; in the games this is inspired by, building felt painfully slow, with raids landing on the unfinished castle. Addressed in a follow-up: labour costs are ×2.5, stone comes more slowly, and a day lasts a full second, so a hilltop castle now runs into its second year. (2) For later: the map looks too bright and cheerful; it should move towards a drabber, earthier palette (logged in `DESIGN.md`).
