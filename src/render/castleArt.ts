@@ -36,6 +36,9 @@ export function tinted(p: Palette, colour: number, amount: number): Palette {
 export const PROBLEM = tinted(STONE, BAD_TINT, 0.45);
 export const GHOST_OK = tinted(STONE, GOOD_TINT, 0.35);
 export const GHOST_BAD = tinted(STONE, BAD_TINT, 0.55);
+/** Pieces that are planned but not yet built: a pale blue model of the finished piece. */
+export const PLANNED: Palette = { top: 0xdde9f8, face: 0xa9c1e0, dark: 0x34465e };
+const SCAFFOLD = 0x8a6a42;
 
 /** How far a piece sinks below its tile's lowest corner, so slopes never show a gap under it. */
 const SINK = 0.2;
@@ -58,6 +61,8 @@ interface Box {
  */
 export class CastleArt implements RowExtras {
   private problems: ReadonlySet<number> = new Set();
+  /** How far each piece is built, 0 to 1. Everything counts as built until told otherwise. */
+  private progress: (p: Piece) => number = () => 1;
 
   constructor(private view: PlanView) {}
 
@@ -65,6 +70,11 @@ export class CastleArt implements RowExtras {
   setView(view: PlanView, problems: ReadonlySet<number>): void {
     this.view = view;
     this.problems = problems;
+  }
+
+  /** Tell the art how far each piece is built. */
+  setProgress(progress: (p: Piece) => number): void {
+    this.progress = progress;
   }
 
   /** Built tiles hide the trees and stones that were there. */
@@ -77,26 +87,39 @@ export class CastleArt implements RowExtras {
     this.drawEarthworks(g, diagonal);
     for (const p of this.view.plan.pieces) {
       if (frontDiagonal(p) !== diagonal) continue;
-      this.drawPiece(g, p, this.problems.has(p.id) ? PROBLEM : STONE);
+      const done = this.progress(p);
+      if (this.problems.has(p.id)) this.drawPiece(g, p, PROBLEM);
+      else if (done >= 1) this.drawPiece(g, p, STONE);
+      else {
+        // The plan as a pale model, with the built part in stone and scaffolding over it.
+        this.drawPiece(g, p, PLANNED);
+        if (done > 0) {
+          this.drawPiece(g, p, STONE, done);
+          this.drawScaffold(g, p, done);
+        }
+      }
     }
   }
 
-  drawPiece(g: Graphics, p: PieceSpec | Piece, pal: Palette): void {
+  /** Draw a piece; with `built` under 1 it stands that share of its height, without battlements. */
+  drawPiece(g: Graphics, p: PieceSpec | Piece, pal: Palette, built = 1): void {
     const base = this.baseLevel(p) - SINK;
-    const top = Math.max(...footprint(p).map(([x, y]) => heightAt(this.view.map, x, y))) + pieceLevels(p);
+    const full = Math.max(...footprint(p).map(([x, y]) => heightAt(this.view.map, x, y))) + pieceLevels(p);
+    const finished = built >= 1;
+    const top = finished ? full : base + (full - base) * Math.max(0.12, built);
     switch (p.kind) {
       case 'wall':
-        this.drawWall(g, p, base, top, pal);
+        this.drawWall(g, p, base, top, pal, finished);
         break;
       case 'tower':
-        if (p.shape === 'round') drawRoundTower(g, p.x, p.y, 0.42, base, top, pal);
-        else drawSquareTower(g, p.x, p.y, 0.42, base, top, pal);
+        if (p.shape === 'round') drawRoundTower(g, p.x, p.y, 0.42, base, top, pal, finished);
+        else drawSquareTower(g, p.x, p.y, 0.42, base, top, pal, finished);
         break;
       case 'gatehouse':
-        drawGatehouse(g, p.x, p.y, p.axis, base, top, pal);
+        drawGatehouse(g, p.x, p.y, p.axis, base, top, pal, finished);
         break;
       case 'keep':
-        drawKeep(g, p.x, p.y, base, top, pal);
+        drawKeep(g, p.x, p.y, base, top, pal, finished);
         break;
     }
   }
@@ -140,6 +163,35 @@ export class CastleArt implements RowExtras {
     }
   }
 
+  /** Poles and ledgers along the front faces of a piece being built. */
+  private drawScaffold(g: Graphics, p: PieceSpec, built: number): void {
+    const tiles = footprint(p);
+    const x0 = Math.min(...tiles.map(([x]) => x)) - 0.5;
+    const y0 = Math.min(...tiles.map(([, y]) => y)) - 0.5;
+    const x1 = Math.max(...tiles.map(([x]) => x)) + 0.5;
+    const y1 = Math.max(...tiles.map(([, y]) => y)) + 0.5;
+    const base = this.baseLevel(p) - SINK;
+    const full = Math.max(...tiles.map(([x, y]) => heightAt(this.view.map, x, y))) + pieceLevels(p);
+    const top = base + (full - base) * Math.max(0.12, built) + 0.5;
+    const line = (ax: number, ay: number, al: number, bx: number, by: number, bl: number, width: number) =>
+      g
+        .moveTo(...(pt(ax, ay, al) as [number, number]))
+        .lineTo(...(pt(bx, by, bl) as [number, number]))
+        .stroke({ width, color: SCAFFOLD, alpha: 0.95 });
+    const poles: [number, number][] = [
+      [x0 + 0.08, y1],
+      [(x0 + x1) / 2, y1],
+      [x1, y1],
+      [x1, (y0 + y1) / 2],
+      [x1, y0 + 0.08],
+    ];
+    for (const [px, py] of poles) line(px, py, base + SINK, px, py, top, 1.4);
+    for (let lv = base + 1; lv < top; lv += 1) {
+      line(x0 + 0.08, y1, lv, x1, y1, lv, 1);
+      line(x1, y1, lv, x1, y0 + 0.08, lv, 1);
+    }
+  }
+
   private baseLevel(p: PieceSpec): number {
     const { map } = this.view;
     let low = Infinity;
@@ -152,7 +204,7 @@ export class CastleArt implements RowExtras {
   }
 
   /** A wall is an arm from the tile centre towards each linked neighbour (or a stub if alone). */
-  private drawWall(g: Graphics, p: Extract<PieceSpec, { kind: 'wall' }>, base: number, top: number, pal: Palette): void {
+  private drawWall(g: Graphics, p: Extract<PieceSpec, { kind: 'wall' }>, base: number, top: number, pal: Palette, finished = true): void {
     const hw = WALL_THICKNESS[p.thickness].width / 2;
     const { x, y } = p;
     const links = NEIGHBOURS.filter(([dx, dy]) => this.linksTo(p, x + dx, y + dy));
@@ -170,6 +222,7 @@ export class CastleArt implements RowExtras {
             top,
           }));
     for (const b of boxes) drawBox(g, b, pal, true);
+    if (!finished) return;
     const merlons: Box[] = [];
     arms.forEach(([dx], i) => {
       const b = boxes[i] as Box;
@@ -276,9 +329,10 @@ function slit(g: Graphics, b: Box, side: 'left' | 'right', at: number, level: nu
   g.poly(pts).fill(colour);
 }
 
-function drawSquareTower(g: Graphics, x: number, y: number, r: number, base: number, top: number, pal: Palette): void {
+function drawSquareTower(g: Graphics, x: number, y: number, r: number, base: number, top: number, pal: Palette, finished: boolean): void {
   const b: Box = { x0: x - r, y0: y - r, x1: x + r, y1: y + r, base, top };
   drawBox(g, b, pal, true);
+  if (!finished) return;
   for (let lv = top - 1; lv > base + 0.6; lv -= 1.4) {
     slit(g, b, 'left', x, lv - 0.3, 0.04, 0.55, pal.dark);
     slit(g, b, 'right', y, lv - 0.3, 0.04, 0.55, pal.dark);
@@ -286,7 +340,7 @@ function drawSquareTower(g: Graphics, x: number, y: number, r: number, base: num
   drawMerlons(g, ringMerlons(b), pal);
 }
 
-function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: number, top: number, pal: Palette): void {
+function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: number, top: number, pal: Palette, finished: boolean): void {
   const rx = (r * TILE_W) / Math.SQRT2;
   const ry = (r * TILE_H) / Math.SQRT2;
   const c0 = isoToScreen(x, y, base);
@@ -306,6 +360,10 @@ function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: numb
   };
   g.poly(half(Math.PI, Math.PI / 2)).fill(shade(pal.face, 1));
   g.poly(half(Math.PI / 2, 0)).fill(shade(pal.face, 0.78));
+  if (!finished) {
+    g.ellipse(c1.sx, c1.sy, rx, ry).fill(pal.top).stroke({ width: 0.8, color: pal.dark, alpha: 0.35 });
+    return;
+  }
   for (let lv = top - 1; lv > base + 0.6; lv -= 1.4) {
     const s = isoToScreen(x, y, lv - 0.3);
     g.rect(s.sx - rx * 0.45 - 1.5, s.sy + ry * 0.85 - 9, 3, 9).fill(pal.dark);
@@ -323,10 +381,11 @@ function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: numb
   drawMerlons(g, merlons, pal);
 }
 
-function drawGatehouse(g: Graphics, x: number, y: number, axis: 'x' | 'y', base: number, top: number, pal: Palette): void {
+function drawGatehouse(g: Graphics, x: number, y: number, axis: 'x' | 'y', base: number, top: number, pal: Palette, finished: boolean): void {
   const r = 0.47;
   const b: Box = { x0: x - r, y0: y - r, x1: x + r, y1: y + r, base, top };
   drawBox(g, b, pal, true);
+  if (!finished && top < base + 2) return;
   // The arch on the visible end of the passage, with a portcullis.
   const ground = base + 0.2;
   const w = 0.2;
@@ -345,6 +404,7 @@ function drawGatehouse(g: Graphics, x: number, y: number, axis: 'x' | 'y', base:
     const [bx, by] = along((i * w) / 2.5, spring + 0.3) as [number, number];
     g.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 1, color: 0x6b5a40, alpha: 0.9 });
   }
+  if (!finished) return;
   const parts: Box[] = ringMerlons(b);
   // Corner turrets stand a little taller.
   const t = 0.15;
@@ -358,10 +418,11 @@ function drawGatehouse(g: Graphics, x: number, y: number, axis: 'x' | 'y', base:
   drawMerlons(g, parts, pal);
 }
 
-function drawKeep(g: Graphics, x: number, y: number, base: number, top: number, pal: Palette): void {
+function drawKeep(g: Graphics, x: number, y: number, base: number, top: number, pal: Palette, finished: boolean): void {
   const inset = 0.08;
   const b: Box = { x0: x - 0.5 + inset, y0: y - 0.5 + inset, x1: x + 1.5 - inset, y1: y + 1.5 - inset, base, top };
   drawBox(g, b, pal, true);
+  if (!finished) return;
   for (let lv = top - 1.2; lv > base + 1; lv -= 1.6)
     for (const at of [0.15, 0.85]) {
       slit(g, b, 'left', x - 0.5 + at * 2, lv - 0.4, 0.06, 0.7, pal.dark);

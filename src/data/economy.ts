@@ -128,6 +128,8 @@ export const ECONOMY = {
   start: { crowns: 6000, stone: 150, timber: 80, food: 600, spoil: 0, standing: 70 },
   /** Rations eaten per worker per day. */
   rationsPerWorker: 1,
+  /** Warn when the food store will last fewer days than this. */
+  lowFoodDays: 10,
   /** In winter nothing is built; workers are kept on at this share of their wage. */
   winterPay: 0.5,
   /** Efficiency when the stores run out of food, or wages go unpaid. */
@@ -135,9 +137,14 @@ export const ECONOMY = {
   unpaidEfficiency: 0.5,
   /** Chance per worker per day of walking off while hungry or unpaid. */
   quitChance: 0.08,
-  /** Taxes on the first day of spring (not the very first spring): base × standing, plus a share for the castle built. */
+  /**
+   * Taxes on the first day of spring (not the very first spring): (base + bonus for the castle built) × standing.
+   * The bonus grows with the worker-days of finished pieces, up to the full amount at `taxFullCastle`
+   * (about a modest walled castle), so it rewards building, not planning small.
+   */
   taxBase: 5000,
   taxPerCompletion: 5000,
+  taxFullCastle: 1200,
   /** Harvest dues paid in food on the first day of autumn: base × standing. */
   harvestFood: 2500,
   /** A levy on the first of the month brings in crowns but costs standing. */

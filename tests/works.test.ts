@@ -3,7 +3,7 @@ import { EARTHWORKS } from '../src/data/castle';
 import { CALENDAR, ECONOMY, WORKER_TYPES, type WorkerType } from '../src/data/economy';
 import { addWorkingDays, dateOf, isWinter } from '../src/sim/calendar';
 import { createPlan, pieceCost, placePieces, type PieceSpec } from '../src/sim/castle';
-import { buy, efficiency, setWanted } from '../src/sim/economy';
+import { buy, efficiency, setWanted, taxDue } from '../src/sim/economy';
 import { createSim, stepSim, today, type SimState } from '../src/sim/state';
 import type { TerrainMap } from '../src/sim/terrain';
 import { summariseWorks } from '../src/sim/works';
@@ -266,5 +266,25 @@ describe('determinism', () => {
     days(a, 100);
     days(b, 100);
     expect(b).toEqual(a);
+  });
+});
+
+describe('taxes and warnings', () => {
+  it('raises spring taxes as castle pieces are finished, not just planned', () => {
+    const s = simOn();
+    const before = taxDue(s.economy, summariseWorks(s.map, s.plan, s.economy, s.works, 0).builtLabour);
+    placePieces(s.map, s.plan, [wall(3, 3), wall(4, 3)]);
+    expect(taxDue(s.economy, summariseWorks(s.map, s.plan, s.economy, s.works, 0).builtLabour)).toBe(before);
+    staff(s, FULL_CREW);
+    days(s, 30);
+    expect(taxDue(s.economy, summariseWorks(s.map, s.plan, s.economy, s.works, today(s)).builtLabour)).toBeGreaterThan(before);
+  });
+
+  it('warns once when food is running low', () => {
+    const s = simOn();
+    staff(s, { labourer: 10 });
+    s.economy.stores.food = 120;
+    days(s, 5);
+    expect(s.log.filter((l) => l.text.startsWith('Food is running low'))).toHaveLength(1);
   });
 });

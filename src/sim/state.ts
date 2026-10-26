@@ -102,7 +102,7 @@ export function stepSim(state: SimState): TickEvents {
     const levy = newMonth(e);
     if (levy > 0) addLog(state, `Levy raised: +${levy} crowns. People grumble (standing ${Math.round(e.standing)}).`);
     if (date.month === 0 && date.year > 1) {
-      const built = summariseWorks(state.map, state.plan, e, state.works, day).built;
+      const built = summariseWorks(state.map, state.plan, e, state.works, day).builtLabour;
       addLog(state, `Spring taxes collected: +${collectTaxes(e, built)} crowns.`);
     }
     if (date.season === 'autumn' && CALENDAR.seasons[date.month - 1] !== 'autumn')
@@ -113,15 +113,27 @@ export function stepSim(state: SimState): TickEvents {
   }
 
   hire(e, rng, winter);
+  const lowFood = (food: number) => food < totalWorkers(e) * ECONOMY.rationsPerWorker * ECONOMY.lowFoodDays;
+  const wasLow = lowFood(e.stores.food);
   const left = payAndFeed(e, rng, winter);
-  if (left > 0) addLog(state, `${left} ${left === 1 ? 'worker has' : 'workers have'} walked off the site (${e.unpaid ? 'unpaid' : 'hungry'}).`);
+  if (!wasLow && lowFood(e.stores.food) && e.stores.food > 0)
+    addLog(state, `Food is running low: about ${Math.floor(e.stores.food / Math.max(1, totalWorkers(e)))} days left. Buy food in the Workers tab.`);
+  if (left > 0) {
+    // One running entry for a spell of walk-offs, rather than a line every day.
+    const last = state.log[state.log.length - 1];
+    const earlier = last && last.day >= day - 10 ? /^(\d+) workers? (?:has|have) walked off/.exec(last.text) : null;
+    const total = left + (earlier ? Number(earlier[1]) : 0);
+    if (earlier) state.log.pop();
+    addLog(state, `${total} ${total === 1 ? 'worker has' : 'workers have'} walked off the site (${e.unpaid ? 'unpaid' : 'hungry'}).`);
+  }
 
   if (!winter && totalWorkers(e) > 0) {
     const result = workDay(state.map, state.plan, e, state.works);
     events.land = result.land;
     events.pieces = result.pieces;
-    for (const name of result.finished) if (!name.endsWith('wall')) addLog(state, `Finished: ${name}.`);
-    const walls = result.finished.filter((n) => n.endsWith('wall')).length;
+    const isWall = (n: string) => / wall at /.test(n);
+    for (const name of result.finished) if (!isWall(name)) addLog(state, `Finished: ${name}.`);
+    const walls = result.finished.filter(isWall).length;
     if (walls > 0) addLog(state, `Finished ${walls} ${walls === 1 ? 'tile' : 'tiles'} of wall.`);
   } else {
     state.works.crew = {};

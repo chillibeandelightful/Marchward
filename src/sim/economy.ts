@@ -160,13 +160,14 @@ export function newMonth(e: EconomyState): number {
   return ECONOMY.levy;
 }
 
-/** Spring taxes, rising with standing and with how much of the castle is built (0 to 1). */
-export function taxDue(e: EconomyState, built: number): number {
-  return Math.round((ECONOMY.taxBase + ECONOMY.taxPerCompletion * built) * (e.standing / 100));
+/** Spring taxes, rising with standing and with the worker-days of castle pieces finished. */
+export function taxDue(e: EconomyState, builtLabour: number): number {
+  const castle = Math.min(1, builtLabour / ECONOMY.taxFullCastle);
+  return Math.round((ECONOMY.taxBase + ECONOMY.taxPerCompletion * castle) * (e.standing / 100));
 }
 
-export function collectTaxes(e: EconomyState, built: number): number {
-  const due = taxDue(e, built);
+export function collectTaxes(e: EconomyState, builtLabour: number): number {
+  const due = taxDue(e, builtLabour);
   e.stores.crowns += due;
   e.thisMonth.taxes += due;
   return due;

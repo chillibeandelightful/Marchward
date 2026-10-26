@@ -20,6 +20,7 @@ import {
   shapeEarth,
   type Axis,
   type CastlePlan,
+  type Piece,
   type PieceSpec,
   type PlacementCheck,
   type PlanReport,
@@ -68,6 +69,8 @@ export interface DesignerHost {
   report(): PlanReport;
   /** The plan changed. `land` lists tiles whose planned height changed, or is 'all'. */
   changed(land: readonly Tile[] | 'all'): void;
+  /** How the building of a piece is going, for the readout. */
+  buildLines(piece: Piece): Line[];
 }
 
 /**
@@ -259,7 +262,7 @@ export class Designer {
     const lines: Line[] = [];
     const there = pieceAt(view, h.x, h.y);
     if (there && (this.tool === 'look' || this.tool === 'remove')) {
-      lines.push({ text: pieceStats(view, there).name, cls: 'head' }, ...statLines(pieceStats(view, there)));
+      lines.push({ text: pieceStats(view, there).name, cls: 'head' }, ...this.host.buildLines(there), ...statLines(pieceStats(view, there)));
       const problem = this.host.report().problems.find((p) => p.piece.id === there.id);
       if (problem) lines.push({ text: problem.text, cls: 'bad' });
     }
@@ -401,7 +404,7 @@ function planLines(r: PlanReport, plan: CastlePlan): Line[] {
   if (r.curtainParts > 1) lines.push({ text: `⚠ The walls are in ${r.curtainParts} separate pieces`, cls: 'warn' });
   for (const p of r.problems.slice(0, 4)) lines.push({ text: `✗ ${p.text} (tile ${p.piece.x}, ${p.piece.y})`, cls: 'bad' });
   if (r.problems.length > 4) lines.push({ text: `…and ${r.problems.length - 4} more problems`, cls: 'bad' });
-  if (r.ready) lines.push({ text: 'The design is complete. Building it comes next milestone.', cls: 'good' });
+  if (r.ready) lines.push({ text: 'The design is complete. Hire workers in the Workers tab and press Space to start the clock.', cls: 'good' });
   return lines;
 }
 

@@ -124,7 +124,7 @@ export function listJobs(map: TerrainMap, plan: CastlePlan, works: WorksState): 
     const waiting = footprint(p).some(([x, y]) => (plan.earthworks[y * map.width + x] ?? 0) !== 0);
     jobs.push({
       key: `p${p.id}`,
-      name: pieceName(p),
+      name: `${pieceName(p)} at ${p.x}, ${p.y}`,
       piece: p,
       tile: p.y * map.width + p.x,
       need: split(cost.labour, JOB_MIX[p.kind]),
@@ -220,8 +220,9 @@ export function workDay(map: TerrainMap, plan: CastlePlan, econ: EconomyState, w
       works.status[job.key] = 'Short on timber';
     }
     if (scale <= 0) continue;
-    stores.stone -= total * scale * perWork.stone;
-    stores.timber -= total * scale * perWork.timber;
+    // Clamp away rounding dust so the stores never show a hair below zero.
+    stores.stone = Math.max(0, stores.stone - total * scale * perWork.stone);
+    stores.timber = Math.max(0, stores.timber - total * scale * perWork.timber);
     if (!works.status[job.key] && short.length > 0) works.status[job.key] = `Short on ${TRADE_NAMES[short[0] as Trade].who}`;
     works.crew[job.key] = crew;
 
@@ -287,8 +288,10 @@ export interface WorksSummary {
   jobs: JobEstimate[];
   /** Share of all planned work done so far, 0 to 1. */
   progress: number;
-  /** Share of the castle's pieces built (by labour), 0 to 1. Taxes rise with this. */
+  /** Share of the castle's pieces built (by labour), 0 to 1. */
   built: number;
+  /** Worker-days that went into finished pieces. Taxes rise with this. */
+  builtLabour: number;
   piecesDone: number;
   piecesTotal: number;
   /** Day number when everything should be finished, or null. */
@@ -359,12 +362,14 @@ export function summariseWorks(map: TerrainMap, plan: CastlePlan, econ: EconomyS
   let pieceNeed = 0;
   let pieceDone = 0;
   let piecesDone = 0;
+  let builtLabour = 0;
   for (const p of plan.pieces) {
     const need = pieceCost(map, p).labour;
     const rec = works.pieces[p.id];
     pieceNeed += need;
     if (rec?.complete) {
       pieceDone += need;
+      builtLabour += need;
       piecesDone++;
     } else if (rec) pieceDone += Math.min(need, sumWork(rec.done));
   }
@@ -379,6 +384,7 @@ export function summariseWorks(map: TerrainMap, plan: CastlePlan, econ: EconomyS
     jobs: estimates,
     progress: all > 0 ? (pieceDone + works.earthDone + earthHere) / all : 0,
     built: pieceNeed > 0 ? pieceDone / pieceNeed : 0,
+    builtLabour,
     piecesDone,
     piecesTotal: plan.pieces.length,
     finish,
