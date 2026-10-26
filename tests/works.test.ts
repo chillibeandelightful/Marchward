@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EARTHWORKS } from '../src/data/castle';
-import { CALENDAR, ECONOMY, WORKER_TYPES, type WorkerType } from '../src/data/economy';
+import { CALENDAR, ECONOMY, WORKER_TYPES, WORKERS, type WorkerType } from '../src/data/economy';
 import { addWorkingDays, dateOf, isWinter } from '../src/sim/calendar';
 import { createPlan, pieceCost, placePieces, type PieceSpec } from '../src/sim/castle';
 import { buy, efficiency, setWanted, taxDue } from '../src/sim/economy';
@@ -171,7 +171,7 @@ describe('construction', () => {
     staff(s, { quarryman: 5 });
     const stone = s.economy.stores.stone;
     days(s, 10);
-    expect(s.economy.stores.stone).toBeCloseTo(stone + 100);
+    expect(s.economy.stores.stone).toBeCloseTo(stone + 5 * 10 * WORKERS.quarryman.stonePerDay);
   });
 
   it('digs earthworks level by level, changing the land and making spoil', () => {

@@ -43,12 +43,12 @@ function play(s: SimState, crew: Partial<Record<(typeof WORKER_TYPES)[number], n
 }
 
 describe('balance (starting numbers)', () => {
-  it('a modest crew finishes a hilltop castle within the first two building seasons', () => {
+  it('a modest crew takes more than one building season over a hilltop castle, finishing in the second', () => {
     const s = createSim(1991);
     hilltopCastle(s);
     const done = play(s, { labourer: 6, digger: 2, carter: 2, quarryman: 8, mason: 6, carpenter: 3 }, 2 * 360);
     expect(done).not.toBeNull();
-    expect(dateOf(done as number).year).toBeLessThanOrEqual(2);
+    expect(dateOf(done as number).year).toBe(2);
   });
 
   it("money, not just labour, limits a big crew: it can't keep them paid through the first year", () => {

@@ -44,7 +44,7 @@ export const TERRAIN: Record<TerrainId, TerrainType> = {
     building: 'Clear first (gives timber)',
     water: false,
     ...OPEN,
-    groundwork: { stone: 0, timber: -8, labour: 6 },
+    groundwork: { stone: 0, timber: -8, labour: 15 },
     foundation: 'Trees cleared first: extra labour, gives timber',
   },
   marsh: {
@@ -55,7 +55,7 @@ export const TERRAIN: Record<TerrainId, TerrainType> = {
     building: 'Needs piling and drainage',
     water: false,
     ...OPEN,
-    groundwork: { stone: 6, timber: 10, labour: 14 },
+    groundwork: { stone: 6, timber: 10, labour: 35 },
     foundation: 'Soft: needs piling and drainage first',
   },
   rock: {

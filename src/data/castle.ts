@@ -25,14 +25,14 @@ export const WALL_HEIGHT: Record<HeightClass, { name: string; levels: number; ti
 };
 
 /** One tile of wall at Thin and Low; thickness scales stone, height scales labour. */
-export const WALL_BASE_COST: Cost = { stone: 20, timber: 2, labour: 12 };
+export const WALL_BASE_COST: Cost = { stone: 20, timber: 2, labour: 30 };
 
 export const TOWER_SHAPE: Record<
   TowerShape,
   { name: string; hp: number; cost: Cost; batterTaken: number; sapTimeMult: number }
 > = {
-  square: { name: 'Square', hp: 320, cost: { stone: 60, timber: 8, labour: 40 }, batterTaken: 1, sapTimeMult: 1 },
-  round: { name: 'Round', hp: 320, cost: { stone: 66, timber: 6, labour: 56 }, batterTaken: 0.75, sapTimeMult: 1.5 },
+  square: { name: 'Square', hp: 320, cost: { stone: 60, timber: 8, labour: 100 }, batterTaken: 1, sapTimeMult: 1 },
+  round: { name: 'Round', hp: 320, cost: { stone: 66, timber: 6, labour: 140 }, batterTaken: 0.75, sapTimeMult: 1.5 },
 };
 
 /** Towers stand a level taller than walls of the same class. */
@@ -42,10 +42,10 @@ export const TOWER_HEIGHT: Record<HeightClass, { name: string; levels: number; t
   high: { name: 'High', levels: 4, timeMult: 2.2 },
 };
 
-export const GATEHOUSE = { name: 'Gatehouse', hp: 400, levels: 3, cost: { stone: 90, timber: 30, labour: 80 } };
+export const GATEHOUSE = { name: 'Gatehouse', hp: 400, levels: 3, cost: { stone: 90, timber: 30, labour: 200 } };
 
 /** The keep covers KEEP.size × KEEP.size tiles, all of which must be level. */
-export const KEEP = { name: 'Keep', hp: 700, levels: 5, size: 2, cost: { stone: 240, timber: 60, labour: 260 } };
+export const KEEP = { name: 'Keep', hp: 700, levels: 5, size: 2, cost: { stone: 240, timber: 60, labour: 650 } };
 
 /**
  * Height above the approach (levels the top stands over the highest outside ground next to it)
@@ -58,8 +58,8 @@ export const RANGE_BONUS = [0, 0, 1, 2, 3, 3, 4];
 
 export const EARTHWORKS = {
   /** Worker-days to lower or raise one tile by one level. */
-  lowerLabour: 6,
-  raiseLabour: 4,
+  lowerLabour: 15,
+  raiseLabour: 10,
   /** Cartloads of spoil made by lowering one tile one level, or used by raising it. */
   spoilPerLevel: 10,
 };
