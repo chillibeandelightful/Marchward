@@ -29,5 +29,5 @@ After each milestone, add a section:
 - Things to look at: the central hill (smooth slopes, with faint contour lines at each height step); the crag (sheer cliffs with a stripe for each height level, a taller peak in the corner); the small rocky terrace near the bottom left (a two-level cliff); the stepping stones across the river where the road fords it.
 - **The question for this milestone:** does the land read clearly? Can you tell heights and terrain types apart at a glance, without pointing at them?
 **Known issues:** nothing moves yet; the land is just for looking at. Pointing at a tree top shows the ground tile under the pointer, which may be the tile behind the tree. No touch pinch-to-zoom (mouse and keyboard only).
-**Feedback:**
+**Feedback:** Approved. Terrain types are easy to tell apart visually (marsh, grassland, hill, rocky ground, shallow and deep water, trees, river), and hovering confirms the type. Open question: the map's scale. In older games of this kind the map felt needlessly large when the castle was the only thing on it and nothing else could be controlled.
 
