@@ -71,3 +71,12 @@ Each milestone ends with a playable build on GitHub Pages and a short "how to te
 
 ## Progress log
 Update as milestones complete.
+
+### M0 – Project setup (done 2026-10-26)
+- Vite + TypeScript (strict) + PixiJS + Vitest scaffold, with exact pinned versions.
+- GitHub Actions workflow: tests and build on every PR; build and deploy to Pages on push to `main`.
+- `src/sim/`: seeded RNG (`rng.ts`, saveable state), fixed-step accumulator (`loop.ts`, 30 ticks/s), plain-data sim state (`state.ts`).
+- `src/render/`: isometric projection and the test scene; `src/ui/`: status HUD; `src/data/`: test scene and sim settings.
+- Test scene: a 10×10 isometric patch with random heights and three figures wandering one tile at a time.
+- Tests cover RNG determinism and resume-from-state, loop tick counting and catch-up cap, sim determinism and JSON round-trip, and a check that `src/sim/` never imports PixiJS, the DOM, render or UI.
+

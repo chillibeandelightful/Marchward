@@ -142,3 +142,6 @@ At campaign start, the player designs a banner:
 
 ## Decisions log
 Record design decisions made during development here, with a date and a one-line reason.
+- 2026-10-26: Simulation runs at a fixed 30 ticks per second; enough for smooth movement while keeping step counts small for testing.
+- 2026-10-26: RNG is mulberry32, whose whole state is one 32-bit number, so saves can store it exactly.
+
