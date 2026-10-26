@@ -72,8 +72,9 @@ export class CastleArt implements RowExtras {
     return this.view.occupant[y * this.view.map.width + x] !== 0;
   }
 
-  /** Draw every piece whose front-most tile is on this diagonal row. */
+  /** Draw this row's earthwork marks, then every piece whose front-most tile is on this row. */
   drawRow(diagonal: number, g: Graphics): void {
+    this.drawEarthworks(g, diagonal);
     for (const p of this.view.plan.pieces) {
       if (frontDiagonal(p) !== diagonal) continue;
       this.drawPiece(g, p, this.problems.has(p.id) ? PROBLEM : STONE);
@@ -106,27 +107,37 @@ export class CastleArt implements RowExtras {
     for (const { s, bad } of order) this.drawPiece(g, s, bad ? GHOST_BAD : GHOST_OK);
   }
 
-  /** Tiles marked for earthworks: amber to raise, blue to lower, one chevron per level. */
-  drawEarthworks(g: Graphics, shapeAt: (x: number, y: number) => TileShape | undefined): void {
-    const { map, plan } = this.view;
-    for (let y = 0; y < map.height; y++)
-      for (let x = 0; x < map.width; x++) {
-        const d = plan.earthworks[y * map.width + x] ?? 0;
-        const s = shapeAt(x, y);
-        if (d === 0 || !s) continue;
-        const colour = d > 0 ? RAISE_COLOUR : LOWER_COLOUR;
-        g.poly(s.top.flatMap((p) => [p.x, p.y])).fill({ color: colour, alpha: 0.28 }).stroke({ width: 1.5, color: colour, alpha: 0.9 });
-        const c = isoToScreen(x, y, (s.corners.n + s.corners.e + s.corners.s + s.corners.w) / 4);
-        const n = Math.min(3, Math.abs(d));
-        for (let i = 0; i < n; i++) {
-          const cy = c.sy + (i - (n - 1) / 2) * 5;
-          const tip = d > 0 ? -3 : 3;
-          g.moveTo(c.sx - 6, cy - tip / 2)
-            .lineTo(c.sx, cy + tip / 2)
-            .lineTo(c.sx + 6, cy - tip / 2)
-            .stroke({ width: 2, color: 0x1b1f24, alpha: 0.85, cap: 'round', join: 'round' });
-        }
+  /** Ground shapes, for drawing earthwork marks on the land as it will be. */
+  setShapes(shapeAt: (x: number, y: number) => TileShape | undefined): void {
+    this.shapeAt = shapeAt;
+  }
+
+  private shapeAt: (x: number, y: number) => TileShape | undefined = () => undefined;
+
+  /**
+   * Tiles on this row marked for earthworks: amber to raise, blue to lower, one chevron per
+   * level. Drawn with the row, so land and pieces in front cover them; none under a piece.
+   */
+  private drawEarthworks(g: Graphics, diagonal: number): void {
+    const { map, plan, occupant } = this.view;
+    for (let x = Math.max(0, diagonal - map.height + 1); x <= Math.min(diagonal, map.width - 1); x++) {
+      const y = diagonal - x;
+      const d = plan.earthworks[y * map.width + x] ?? 0;
+      const s = this.shapeAt(x, y);
+      if (d === 0 || !s || occupant[y * map.width + x]) continue;
+      const colour = d > 0 ? RAISE_COLOUR : LOWER_COLOUR;
+      g.poly(s.top.flatMap((p) => [p.x, p.y])).fill({ color: colour, alpha: 0.28 }).stroke({ width: 1.5, color: colour, alpha: 0.9 });
+      const c = isoToScreen(x, y, (s.corners.n + s.corners.e + s.corners.s + s.corners.w) / 4);
+      const n = Math.min(3, Math.abs(d));
+      for (let i = 0; i < n; i++) {
+        const cy = c.sy + (i - (n - 1) / 2) * 5;
+        const tip = d > 0 ? -3 : 3;
+        g.moveTo(c.sx - 6, cy - tip / 2)
+          .lineTo(c.sx, cy + tip / 2)
+          .lineTo(c.sx + 6, cy - tip / 2)
+          .stroke({ width: 2, color: 0x1b1f24, alpha: 0.85, cap: 'round', join: 'round' });
       }
+    }
   }
 
   private baseLevel(p: PieceSpec): number {

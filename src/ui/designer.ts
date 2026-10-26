@@ -9,7 +9,6 @@ import {
   type TowerShape,
 } from '../data/castle';
 import {
-  adjustEarthwork,
   checkPlacement,
   clearEarthwork,
   isCurtain,
@@ -18,6 +17,7 @@ import {
   pieceStats,
   placePieces,
   removePieceAt,
+  shapeEarth,
   type Axis,
   type CastlePlan,
   type PieceSpec,
@@ -37,8 +37,18 @@ const TOOLS: readonly { id: ToolId; name: string; key: string; help: string }[] 
   { id: 'tower', name: 'Tower', key: '3', help: 'Click to place. Placing on a wall turns that wall into a tower.' },
   { id: 'gatehouse', name: 'Gatehouse', key: '4', help: 'Click to place, usually in a wall. R turns the passage.' },
   { id: 'keep', name: 'Keep', key: '5', help: 'Covers 2×2 tiles of level ground. Put it inside the walls.' },
-  { id: 'raise', name: 'Raise', key: '6', help: 'Click or drag to mark tiles to build up one level. Uses spoil.' },
-  { id: 'lower', name: 'Lower', key: '7', help: 'Click or drag to mark tiles to dig down one level. Makes spoil.' },
+  {
+    id: 'raise',
+    name: 'Raise',
+    key: '6',
+    help: 'Click or drag to build tiles up one level; the ground around slopes up with them. Hold Shift for a sheer bank. Uses spoil.',
+  },
+  {
+    id: 'lower',
+    name: 'Lower',
+    key: '7',
+    help: 'Click or drag to dig tiles down one level; the ground around slopes down with them. Hold Shift for a sheer cut, like a ditch. Makes spoil.',
+  },
   { id: 'remove', name: 'Remove', key: '8', help: 'Click or drag to remove pieces and earthwork marks.' },
 ];
 
@@ -78,6 +88,8 @@ export class Designer {
   private painted = new Set<string>();
   private turnGate = false;
   private clearArmed = false;
+  /** Shift held: earthworks change just the one tile, leaving a sheer cut. */
+  private sheer = false;
   private panelKey = '';
 
   constructor(
@@ -85,6 +97,9 @@ export class Designer {
     private readonly toolsEl: HTMLElement,
     private readonly panelEl: HTMLElement,
   ) {
+    const shift = (e: KeyboardEvent) => (this.sheer = e.shiftKey);
+    window.addEventListener('keyup', shift);
+    window.addEventListener('keydown', shift);
     window.addEventListener('keydown', (e) => {
       const tool = TOOLS.find((t) => t.key === e.key);
       if (tool) this.setTool(tool.id);
@@ -231,9 +246,9 @@ export class Designer {
       else if (clearEarthwork(base, plan, tile.x, tile.y)) this.changed([tile]);
       return;
     }
-    const problem = adjustEarthwork(base, plan, tile.x, tile.y, this.tool === 'raise' ? 1 : -1);
-    if (problem) this.notice = { text: problem, bad: true };
-    else this.changed([tile]);
+    const result = shapeEarth(base, plan, tile.x, tile.y, this.tool === 'raise' ? 1 : -1, !this.sheer);
+    if (result.problem) this.notice = { text: result.problem, bad: true };
+    else this.changed(result.changed.map(([x, y]) => ({ x, y })));
   }
 
   /** Lines for the readout about the hovered tile: the piece there, or what would happen on click. */

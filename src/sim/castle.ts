@@ -239,6 +239,43 @@ export function adjustEarthwork(base: TerrainMap, plan: CastlePlan, x: number, y
   return null;
 }
 
+/**
+ * Raise or lower a tile one level. With `ripple`, neighbours that met it as flat ground or a
+ * slope are pulled along wherever they would otherwise become a cliff, and so on outwards, so
+ * digging the same spot again widens a pit with walkable sides instead of sinking a shaft.
+ * Ground that already met it at a cliff, and tiles that can't be changed, are left alone.
+ * Returns a problem (and changes nothing), or the tiles that changed.
+ */
+export function shapeEarth(
+  base: TerrainMap,
+  plan: CastlePlan,
+  x: number,
+  y: number,
+  delta: 1 | -1,
+  ripple = true,
+): { problem: string | null; changed: [number, number][] } {
+  const problem = adjustEarthwork(base, plan, x, y, delta);
+  if (problem) return { problem, changed: [] };
+  const changed: [number, number][] = [[x, y]];
+  if (!ripple) return { problem: null, changed };
+
+  const level = (tx: number, ty: number) => clampHeight(heightAt(base, tx, ty) + (plan.earthworks[ty * base.width + tx] ?? 0));
+  const before = (tx: number, ty: number) =>
+    level(tx, ty) - (changed.some(([cx, cy]) => cx === tx && cy === ty) ? delta : 0);
+  for (let q = 0; q < changed.length; q++) {
+    const [cx, cy] = changed[q] as [number, number];
+    for (const [dx, dy] of NEIGHBOURS) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (!inBounds(base, nx, ny) || changed.some(([tx, ty]) => tx === nx && ty === ny)) continue;
+      if (stepBetween(before(cx, cy), level(nx, ny)) === 'cliff') continue; // a cliff already
+      if (stepBetween(level(cx, cy), level(nx, ny)) !== 'cliff') continue; // still a slope
+      if (adjustEarthwork(base, plan, nx, ny, delta) === null) changed.push([nx, ny]);
+    }
+  }
+  return { problem: null, changed };
+}
+
 export function clearEarthwork(base: TerrainMap, plan: CastlePlan, x: number, y: number): boolean {
   if (!inBounds(base, x, y)) return false;
   const i = y * base.width + x;
