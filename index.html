@@ -12,11 +12,29 @@
         font: 13px/1.5 system-ui, sans-serif; color: #e8e2d0;
         background: rgba(20, 22, 26, 0.8); border-radius: 6px; pointer-events: none;
       }
+      #readout {
+        position: fixed; left: 12px; bottom: 12px; min-width: 220px; padding: 10px 12px;
+        font: 13px/1.5 system-ui, sans-serif; color: #e8e2d0;
+        background: rgba(20, 22, 26, 0.85); border-radius: 6px; pointer-events: none;
+      }
+      #readout strong { font-size: 14px; }
+      #readout .dim, #help { color: #a39d8c; }
+      #help {
+        position: fixed; right: 12px; bottom: 12px; padding: 8px 12px;
+        font: 12px/1.6 system-ui, sans-serif; text-align: right;
+        background: rgba(20, 22, 26, 0.8); border-radius: 6px; pointer-events: none;
+      }
     </style>
   </head>
   <body>
     <div id="app"></div>
     <div id="hud"></div>
+    <div id="readout"></div>
+    <div id="help">
+      Drag or WASD / arrow keys to move<br />
+      Mouse wheel or + / − to zoom<br />
+      C to recentre · G to show the grid
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
