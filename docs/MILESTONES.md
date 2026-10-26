@@ -99,4 +99,5 @@ Update as milestones complete.
 - Earthworks: mark tiles to raise or lower one level per click (or drag), shown as amber/blue chevrons; the land is drawn as it will be once dug. Spoil balance and labour shown; a shortfall is a warning, not a block.
 - Pieces drawn in code (stone courses, battlements, arrow slits, round tower drums, gatehouse arch and portcullis, keep with corner turrets and a pennant), depth-sorted with the land row by row. Pointing at a wall or tower picks that piece rather than the ground hidden behind it.
 - Tests: placement rules, costs by thickness and terrain, cliffs, joining, one keep/gatehouse, level keep ground, towers replacing walls, gate passage, removal, enclosure (walls and natural cliffs), problems after earthworks, height-above-approach and ladder rules, round tower notes, spoil balance and earthwork limits, plan JSON round-trip, piece picking.
+- Playtest: approved. Follow-up from the feedback: earthworks ripple outwards into walkable slopes (Shift for a sheer cut), and earthwork marks are drawn with the land rather than on top of pieces.
 

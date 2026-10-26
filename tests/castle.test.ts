@@ -11,6 +11,7 @@ import {
   planReport,
   plannedMap,
   removePieceAt,
+  shapeEarth,
   viewPlan,
   type PieceSpec,
 } from '../src/sim/castle';
@@ -237,6 +238,64 @@ describe('earthworks', () => {
     expect(adjustEarthwork(map, plan, 2, 2, 1)).toMatch(/water/i);
     expect(adjustEarthwork(map, plan, 4, 4, -1)).toBeNull();
     expect(adjustEarthwork(map, plan, 4, 4, -1)).toMatch(/low/);
+  });
+});
+
+describe('shaping the land', () => {
+  function steepest(map: TerrainMap): number {
+    let worst = 0;
+    for (let y = 0; y < map.height; y++)
+      for (let x = 0; x + 1 < map.width; x++) {
+        worst = Math.max(worst, Math.abs((map.heights[y * map.width + x] ?? 0) - (map.heights[y * map.width + x + 1] ?? 0)));
+        if (y + 1 < map.height)
+          worst = Math.max(worst, Math.abs((map.heights[y * map.width + x] ?? 0) - (map.heights[(y + 1) * map.width + x] ?? 0)));
+      }
+    return worst;
+  }
+
+  it('digging one spot again and again widens a pit with walkable sides', () => {
+    const map = flatMap(11, 4);
+    const plan = createPlan(map);
+    for (let i = 0; i < 3; i++) expect(shapeEarth(map, plan, 5, 5, -1).problem).toBeNull();
+    const planned = plannedMap(map, plan);
+    expect(planned.heights[5 * 11 + 5]).toBe(1);
+    expect(planned.heights[5 * 11 + 6]).toBe(2); // the ripple
+    expect(planned.heights[5 * 11 + 7]).toBe(3);
+    expect(planned.heights[5 * 11 + 8]).toBe(4); // untouched beyond it
+    expect(steepest(planned)).toBe(1);
+  });
+
+  it('raising builds a mound the same way, and spoil counts every tile moved', () => {
+    const map = flatMap(9, 1);
+    const plan = createPlan(map);
+    shapeEarth(map, plan, 4, 4, 1);
+    const second = shapeEarth(map, plan, 4, 4, 1);
+    expect(second.changed.length).toBe(5); // the peak and its four neighbours
+    expect(steepest(plannedMap(map, plan))).toBe(1);
+    expect(planReport(map, viewPlan(map, plan)).earthworks.raised).toBe(6);
+  });
+
+  it('leaves existing cliffs alone, and Shift (no ripple) cuts a sheer ditch', () => {
+    const map = flatMap(8, 2);
+    for (let y = 0; y < 8; y++) map.heights[y * 8 + 6] = 5; // a crag along x = 6
+    const plan = createPlan(map);
+    shapeEarth(map, plan, 5, 3, -1);
+    shapeEarth(map, plan, 5, 3, -1);
+    expect(plannedMap(map, plan).heights[3 * 8 + 6]).toBe(5);
+
+    const sheer = createPlan(map);
+    shapeEarth(map, sheer, 2, 2, -1, false);
+    expect(shapeEarth(map, sheer, 2, 2, -1, false).changed).toEqual([[2, 2]]);
+    expect(plannedMap(map, sheer).heights[2 * 8 + 2]).toBe(0);
+    expect(plannedMap(map, sheer).heights[2 * 8 + 3]).toBe(2);
+  });
+
+  it("stops at ground that can't be dug", () => {
+    const map = flatMap(6, 3, { '3,2': 'rock' });
+    const plan = createPlan(map);
+    shapeEarth(map, plan, 2, 2, -1);
+    shapeEarth(map, plan, 2, 2, -1);
+    expect(plannedMap(map, plan).heights[2 * 6 + 3]).toBe(3);
   });
 });
 

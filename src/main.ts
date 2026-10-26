@@ -42,15 +42,14 @@ async function start(): Promise<void> {
   };
   let shapeAt = shapeIndex(shapes);
   const art = new CastleArt(view);
+  art.setShapes((x, y) => shapeAt[y * sim.map.width + x]);
   art.setView(view, new Set());
   const terrain = new TerrainView(view.map, shapes, new ProceduralAssets(app.renderer), art);
-  const marks = new Graphics();
   const ghosts = new Graphics();
   const world = new Container();
-  world.addChild(terrain.root, marks, ghosts);
+  world.addChild(terrain.root, ghosts);
   app.stage.addChild(world);
 
-  const redrawMarks = () => art.drawEarthworks(marks.clear(), (x, y) => shapeAt[y * sim.map.width + x]);
 
   const designer = new Designer(
     {
@@ -88,7 +87,6 @@ async function start(): Promise<void> {
         } else {
           terrain.redrawExtras();
         }
-        redrawMarks();
       },
     },
     toolsEl,
