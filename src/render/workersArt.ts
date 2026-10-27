@@ -29,6 +29,8 @@ const SHOWN_PER_TYPE = 4;
 export interface ActorHost {
   layer(diagonal: number): Graphics | undefined;
   ground(x: number, y: number): number;
+  /** Tiles walked from one tile to (next to) another, going round walls and water; none for a straight line. */
+  route?(from: readonly [number, number], to: readonly [number, number]): readonly (readonly [number, number])[] | null;
 }
 
 /**
@@ -53,8 +55,8 @@ export function drawWorkers(host: ActorHost, sim: SimState, timeMs: number): voi
           const period = 9 + hash2(seed, 1, 3) * 4;
           const phase = ((t / period + hash2(seed, 2, 3)) % 1) * 2;
           const k = phase < 1 ? phase : 2 - phase;
-          const x = cx + 1 + (spot.x - cx - 1) * k;
-          const y = cy + (spot.y - cy) * k;
+          const way = host.route?.([cx + 1, cy], [Math.round(spot.x), Math.round(spot.y)]);
+          const [x, y] = way && way.length > 1 ? along(way, k) : [cx + 1 + (spot.x - cx - 1) * k, cy + (spot.y - cy) * k];
           drawCarter(host, x, y, t + seed, phase < 1);
           continue;
         }
@@ -75,6 +77,21 @@ export function drawWorkers(host: ActorHost, sim: SimState, timeMs: number): voi
       drawFigure(host, cx + 0.15 + Math.cos(a) * 0.9, cy + 1.2 + Math.sin(a) * 0.5, type, t + k, false);
     }
   }
+}
+
+/** The point a share `k` of the way along a route of tile centres. */
+function along(way: readonly (readonly [number, number])[], k: number): [number, number] {
+  let total = 0;
+  for (let i = 1; i < way.length; i++) total += Math.hypot((way[i] as [number, number])[0] - (way[i - 1] as [number, number])[0], (way[i] as [number, number])[1] - (way[i - 1] as [number, number])[1]);
+  let left = total * k;
+  for (let i = 1; i < way.length; i++) {
+    const [ax, ay] = way[i - 1] as [number, number];
+    const [bx, by] = way[i] as [number, number];
+    const d = Math.hypot(bx - ax, by - ay);
+    if (left <= d) return [ax + ((bx - ax) * left) / Math.max(1e-9, d), ay + ((by - ay) * left) / Math.max(1e-9, d)];
+    left -= d;
+  }
+  return [...(way[way.length - 1] as [number, number])];
 }
 
 function hashKey(key: string): number {

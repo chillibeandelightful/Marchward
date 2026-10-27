@@ -1,9 +1,13 @@
-import { createEconomy } from './economy';
+import { CALENDAR } from '../data/economy';
+import { isWinter } from './calendar';
+import { createDefence } from './defence';
+import { createEconomy, startingTroops } from './economy';
+import { Rng } from './rng';
 import type { SimState } from './state';
 import { createWorks } from './works';
 
 /** Bump when the shape of SimState changes, and add a step to MIGRATIONS that upgrades the old shape. */
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface SaveFile {
   version: number;
@@ -25,6 +29,20 @@ const MIGRATIONS: Record<number, (state: Record<string, unknown>) => Record<stri
     history: s.history ?? [],
     log: s.log ?? [],
   }),
+  // Version 2 (M4): the garrison and raids. An M3 game gets the starting garrison and its first raid
+  // some months on from today, so a castle built under M3 isn't attacked the moment it's loaded.
+  1: (s) => {
+    const economy = s.economy as Record<string, unknown>;
+    const defence = createDefence(new Rng(Number(s.rngState) || 1));
+    const day = Math.floor(Number(s.tick ?? 0) / CALENDAR.ticksPerDay);
+    defence.nextRaid = Math.max(defence.nextRaid, day + 30);
+    while (isWinter(defence.nextRaid)) defence.nextRaid++;
+    return {
+      ...s,
+      economy: { ...economy, troops: economy.troops ?? startingTroops(), troopsWanted: economy.troopsWanted ?? startingTroops() },
+      defence: s.defence ?? defence,
+    };
+  },
 };
 
 export function toSave(state: SimState, savedAt: number): string {

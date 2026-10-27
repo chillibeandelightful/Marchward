@@ -38,29 +38,40 @@ Each milestone ends with a playable build on GitHub Pages and a short "how to te
 - Post-battle report.
 - **Playtest:** do thickness and height choices clearly matter?
 
-## M5 – Siege depth
+## M5 – Classic look (switchable visual style)
+A second visual style, "Classic", close to the drab, chunky look of early-'90s castle games, alongside the current one (called "Modern" in the menu). Built as a style layer from the start, so the look can be switched from a menu at any time and later art work slots in behind the same switch.
+- Style layer (`src/render/styles/`): one `VisualStyle` object per style holds the palette (land, water, stone, timber, sky, troops), the sprite drawing choices, the UI theme and the screen effects. Game logic and the sim never see it; render and UI read the active style.
+- Style switch in the Game tab (and a key), applied instantly without reloading, remembered per browser in localStorage. Not part of saved games.
+- Classic palette: muted olive and brown ground, grey stone with visible block courses and darker mortar, dark pines, slate water, an overcast sky band with distant hills behind the map. Folds in the M3 note that the map was too bright.
+- Classic sprites: stone-block texture on walls, towers and keep; heavier dark outlines; chunkier workers and soldiers with stronger team colours; timber scaffolding and carts in the same hand.
+- Screen effect: the map is drawn to a low-resolution texture and scaled up with nearest-neighbour filtering (about 2–3× chunky pixels), then reduced to a limited palette with ordered dithering. Strength adjustable; off in Modern.
+- Classic UI frame: bevelled iron border with rivets round the map; a parchment message panel along the bottom showing the latest log lines beside a heraldic banner; a column of icon buttons down the right for the tools and tabs (build, workers, timber, stone, defence, standing, hiring, plan, reports, save). Icons drawn in code; an openly licensed pixel font. Panels open from the icons over the frame. Modern keeps today's layout.
+- Not in this milestone: burning buildings, mounted units, villagers and seasonal visuals (later milestones), and hand-painted art. Procedural drawing will get the palette, frame and pixel feel of the reference mockups, not their painted detail.
+- **Playtest:** does Classic feel like the look you remember? Is switching styles quick and does everything still read clearly in both?
+
+## M6 – Siege depth
 - Sappers, ladder crews, moats.
 - Smarter enemy approach (weak points, varied directions).
 - Sieges with food on both sides.
 - Commander control mode.
 - **Playtest:** do the defensive choices feel like real trade-offs?
 
-## M6 – Messengers and story
+## M7 – Messengers and story
 - Event system: monthly messenger, three choices, flags and consequences, chained stories.
 - Chronicle mode event set (first batch).
 - Factions and standing.
 - **Playtest:** are the choices interesting? Do consequences show up later?
 
-## M7 – Campaign
+## M8 – Campaign
 - Multiple regions with distinct terrain.
 - Campaign length choice, difficulty levels, practice mode.
 - Region-to-region progression and carry-over.
 - **Playtest:** a full short (3-site) campaign start to finish.
 
-## M8 – Atmosphere and heraldry
+## M9 – Atmosphere and heraldry
 - Village generation, wandering villagers (who flee to the gate during raids), roads.
 - Banner designer; banners on towers and troops.
-- Seasonal visuals.
+- Seasonal visuals (in both visual styles).
 - Sound effects and music.
 - **Playtest:** does each site feel alive?
 
@@ -113,3 +124,14 @@ Update as milestones complete.
 - Save and load (`src/sim/save.ts`, `src/ui/gamePanel.ts`): one save slot plus an autosave at the start of every month, kept in the browser. Saves carry a version number and an upgrade step per version.
 - Tests: calendar and working-day counting; hiring speed by wage; daily wages and rations, half pay in winter; hunger and unpaid wages slowing and losing workers; buying; taxes, harvest and levies; building a wall and using its materials; no masons means no finish (and says so); stone shortage; quarrying; digging and raising earthworks with spoil; pieces waiting for earthworks; winter stop; removed pieces; estimates and bottlenecks; determinism and JSON round-trip with workers; save round-trip, upgrade from version 0, bad and newer saves; a balance check that a modest crew needs more than one building season for a hilltop castle while a huge crew runs out of money.
 - Playtest: approved; everything worked and shortages had a clear knock-on effect. Building felt far too fast, so a follow-up slowed it: all labour costs ×2.5, quarrymen cut half as much stone, and a day lasts a second. A hilltop castle now takes a sensible crew into its second year, with money running short in between. The map's bright, cheerful colours are noted for a drabber pass later.
+
+### M4 – Combat core (done 2026-10-26)
+- Pathfinding (`src/sim/path.ts`): A* and distance fields over the tile map. Each step costs the terrain's move cost, plus half again per level climbed; cliffs and deep water can't be crossed. Workers' carts now follow the road round walls instead of walking through them.
+- Raids (`src/sim/defence.ts`, numbers in `src/data/combat.ts`): the first comes about day 100–120, then every 100–150 days, never in winter, each from a random map edge and a little stronger than the last. Scouts give 10 days' warning in the log and the top bar. While a battle runs, the calendar stands still and building stops; the game pauses itself at the start and end of every battle.
+- Units: swordsmen and archers in your garrison; raiders (axes) and raider archers against you. The crown pays for 3 swordsmen and 4 archers; more can be hired in the new **Defence** tab for 3 crowns a day each (winter too), and soldiers eat rations like workers.
+- Battle (`src/sim/battle.ts`): raiders head for the keep (or the camp, if no keep is half built), pick the weakest-looking way in, mass at one piece and batter it. Walls and towers have HP from their thickness and kind; a piece less than half built is a gap they walk through. Archers' reach is 5 tiles plus the height bonus, shorter shooting uphill, and they hit less often shooting up; arrow slits and battlements give cover. Oil cauldrons pour on raiders at the foot of a piece, if an archer is there to tip them. Defender swordsmen guard the stores; raiders who reach them unopposed carry off crowns and food. Raiders break at 65% losses or after three minutes.
+- Classic control: place troops before battle with the new **Troops** tool (0), or let them be placed automatically (archers on the walls nearest the attack, swordsmen round the keep). In peacetime posted soldiers stand at their posts on the map. **Extras** tool (9) adds arrow slits or an oil cauldron to a wall or tower (the keep has slits already).
+- After the battle: damage undoes building work on each piece (a breached piece drops to 20% built and needs rebuilding), losses come out of the garrison, standing rises if the raid was beaten off and falls if the stores were plundered. The **report** opens by itself: how the fight went, each wall breached and why (with a lesson such as "thin walls have 100 HP; a thick wall has 280"), gaps the raiders walked through, what the archers, slits and cauldrons did, and what needs repairing. Past reports stay in the Defence tab.
+- On the map: soldiers in red tabards and helmets, raiders in drab hoods, arrows in flight, oil splashes, HP bars over damaged pieces, and rubble where a piece fell. Pointing at a piece during battle shows its HP.
+- Saves are version 2 (adds the garrison and raids); version 1 saves upgrade and get their first raid at least 30 days out.
+- Tests: paths round walls and cliffs, uphill costs, distance fields; gaps vs. finished walls; raiders choosing a thin wall; thin walls falling faster than thick; plunder and the camp as target; height range; a full garrison beating off raid 1; high walls losing fewer men than low; slits and cauldrons (manned and unmanned); post rules; after-battle damage and standing; raid timing, warnings, the frozen calendar, raids off; crown-paid troops; determinism and saving mid-battle.

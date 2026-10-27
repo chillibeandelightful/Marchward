@@ -19,6 +19,10 @@ function simOn(map: TerrainMap = flatMap(12), seed = 7): SimState {
   s.plan = createPlan(map);
   s.camp = [0, 0];
   Object.assign(s.economy.stores, { crowns: 100000, stone: 5000, timber: 5000, food: 50000 });
+  // No raids and no garrison: these tests are about building and the workforce.
+  s.defence.raids = false;
+  s.economy.troops = { swordsman: 0, archer: 0 };
+  s.economy.troopsWanted = { swordsman: 0, archer: 0 };
   return s;
 }
 

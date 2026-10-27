@@ -2,8 +2,11 @@ import { CALENDAR, ECONOMY } from '../data/economy';
 import { kestrelFord } from '../data/sites/kestrelFord';
 import { dateOf, formatDate, isWinter } from './calendar';
 import { createPlan, type CastlePlan } from './castle';
-import { collectHarvest, collectTaxes, createEconomy, efficiency, hire, newMonth, payAndFeed, totalWorkers, type EconomyState } from './economy';
+import { collectHarvest, collectTaxes, createEconomy, efficiency, hire, mouths, newMonth, payAndFeed, totalWorkers, type EconomyState } from './economy';
 import { Rng } from './rng';
+import { endBattle, startBattle, stepBattle } from './battle';
+import { addReport, createDefence, describeStrength, raidStrength, scheduleRaid, type DefenceState } from './defence';
+import { RAIDS } from '../data/combat';
 import { buildSite, type Point, type SiteDef } from './site';
 import type { TerrainMap } from './terrain';
 import { createWorks, summariseWorks, workDay, type WorksState } from './works';
@@ -40,6 +43,8 @@ export interface SimState {
   camp: Point;
   economy: EconomyState;
   works: WorksState;
+  /** Raids, the garrison's posts, and any battle being fought. */
+  defence: DefenceState;
   history: Sample[];
   /** Recent happenings, newest last. */
   log: LogEntry[];
@@ -53,6 +58,12 @@ export interface TickEvents {
   /** Tile indices whose height changed. */
   land: number[];
   pieces: boolean;
+  /** Scouts brought word of a raid. */
+  raidWarning: boolean;
+  battleStarted: boolean;
+  battleEnded: boolean;
+  /** A battle is being fought (the calendar stands still meanwhile). */
+  battle: boolean;
 }
 
 const LOG_LENGTH = 40;
@@ -60,6 +71,7 @@ const LOG_LENGTH = 40;
 export function createSim(seed: number, site: SiteDef = kestrelFord): SimState {
   const rng = new Rng(seed);
   const map = buildSite(site);
+  const defence = createDefence(rng);
   return {
     seed,
     tick: 0,
@@ -71,6 +83,7 @@ export function createSim(seed: number, site: SiteDef = kestrelFord): SimState {
     camp: site.camp ?? [Math.floor(site.width / 2), Math.floor(site.height / 2)],
     economy: createEconomy(),
     works: createWorks(),
+    defence,
     history: [],
     log: [{ day: 0, text: 'You arrive at the site with a purse from the crown. Plan the castle, then hire workers.' }],
   };
@@ -87,8 +100,12 @@ export function addLog(state: SimState, text: string): void {
 
 /** Advance the simulation by exactly one fixed tick. Everything that happens, happens at the start of a day. */
 export function stepSim(state: SimState): TickEvents {
+  const events: TickEvents = { newDay: false, newMonth: false, land: [], pieces: false, raidWarning: false, battleStarted: false, battleEnded: false, battle: false };
+  if (state.defence.battle) {
+    stepBattleTick(state, events);
+    return events;
+  }
   state.tick++;
-  const events: TickEvents = { newDay: false, newMonth: false, land: [], pieces: false };
   if (state.tick % CALENDAR.ticksPerDay !== 0) return events;
   events.newDay = true;
   const day = today(state);
@@ -113,11 +130,11 @@ export function stepSim(state: SimState): TickEvents {
   }
 
   hire(e, rng, winter);
-  const lowFood = (food: number) => food < totalWorkers(e) * ECONOMY.rationsPerWorker * ECONOMY.lowFoodDays;
+  const lowFood = (food: number) => food < mouths(e) * ECONOMY.rationsPerWorker * ECONOMY.lowFoodDays;
   const wasLow = lowFood(e.stores.food);
   const left = payAndFeed(e, rng, winter);
   if (!wasLow && lowFood(e.stores.food) && e.stores.food > 0)
-    addLog(state, `Food is running low: about ${Math.floor(e.stores.food / Math.max(1, totalWorkers(e)))} days left. Buy food in the Workers tab.`);
+    addLog(state, `Food is running low: about ${Math.floor(e.stores.food / Math.max(1, mouths(e)))} days left. Buy food in the Workers tab.`);
   if (left > 0) {
     // One running entry for a spell of walk-offs, rather than a line every day.
     const last = state.log[state.log.length - 1];
@@ -154,6 +171,57 @@ export function stepSim(state: SimState): TickEvents {
     if (state.history.length > ECONOMY.maxSamples) state.history.splice(0, state.history.length - ECONOMY.maxSamples);
   }
 
+  if (state.defence.raids) raidCheck(state, rng, day, events);
+
+  state.rngState = rng.getState();
+  return events;
+}
+
+/** Scouts warn of a raid some days ahead; on the day, the raiders arrive and the battle starts. */
+function raidCheck(state: SimState, rng: Rng, day: number, events: TickEvents): void {
+  const d = state.defence;
+  if (!d.warned && day >= d.nextRaid - RAIDS.warningDays && day < d.nextRaid) {
+    d.warned = true;
+    events.raidWarning = true;
+    addLog(
+      state,
+      `Scouts report raiders gathering to the ${d.from}: ${describeStrength(raidStrength(d.raidCount + 1))}, expected about ${formatDate(d.nextRaid)}. Post your soldiers with the Troops tool (0).`,
+    );
+  }
+  if (day >= d.nextRaid) beginBattle(state, rng, events);
+}
+
+function beginBattle(state: SimState, rng: Rng, events: TickEvents): void {
+  state.defence.battle = startBattle(state, rng);
+  const b = state.defence.battle;
+  events.battleStarted = true;
+  events.battle = true;
+  addLog(state, `Raiders attack from the ${b.from}, making for ${b.target === 'keep' ? 'the keep' : 'the camp'}! Building stops while the battle is fought.`);
+}
+
+function stepBattleTick(state: SimState, events: TickEvents): void {
+  const rng = new Rng(state.rngState);
+  const r = stepBattle(state, rng);
+  events.battle = true;
+  events.pieces = r.pieces;
+  if (r.ended) {
+    const day = today(state);
+    const report = endBattle(state, day);
+    addReport(state.defence, report);
+    addLog(state, report.headline);
+    scheduleRaid(state.defence, rng, day);
+    events.battleEnded = true;
+    events.pieces = true;
+  }
+  state.rngState = rng.getState();
+}
+
+/** Bring the next raid on now, without waiting for it (for playtesting the defences). */
+export function raidNow(state: SimState): TickEvents {
+  const events: TickEvents = { newDay: false, newMonth: false, land: [], pieces: true, raidWarning: false, battleStarted: false, battleEnded: false, battle: false };
+  if (state.defence.battle) return events;
+  const rng = new Rng(state.rngState);
+  beginBattle(state, rng, events);
   state.rngState = rng.getState();
   return events;
 }

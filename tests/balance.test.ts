@@ -45,6 +45,7 @@ function play(s: SimState, crew: Partial<Record<(typeof WORKER_TYPES)[number], n
 describe('balance (starting numbers)', () => {
   it('a modest crew takes more than one building season over a hilltop castle, finishing in the second', () => {
     const s = createSim(1991);
+    s.defence.raids = false; // building pace on its own; raids are tested in battle.test.ts
     hilltopCastle(s);
     const done = play(s, { labourer: 6, digger: 2, carter: 2, quarryman: 8, mason: 6, carpenter: 3 }, 2 * 360);
     expect(done).not.toBeNull();
@@ -53,6 +54,7 @@ describe('balance (starting numbers)', () => {
 
   it("money, not just labour, limits a big crew: it can't keep them paid through the first year", () => {
     const s = createSim(1991);
+    s.defence.raids = false;
     hilltopCastle(s);
     play(s, { labourer: 20, digger: 8, carter: 8, quarryman: 20, mason: 20, carpenter: 10 }, 200);
     expect(s.log.some((l) => l.text.includes('unpaid'))).toBe(true);
