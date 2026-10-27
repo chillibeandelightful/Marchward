@@ -49,6 +49,15 @@ A second visual style, "Classic", close to the drab, chunky look of early-'90s c
 - Not in this milestone: burning buildings, mounted units, villagers and seasonal visuals (later milestones), and hand-painted art. Procedural drawing will get the palette, frame and pixel feel of the reference mockups, not their painted detail.
 - **Playtest:** does Classic feel like the look you remember? Is switching styles quick and does everything still read clearly in both?
 
+## M5b – High view (camera angle and horizon)
+A trial of the reference mockups' high-angle three-quarter view, staying with flat 2D drawing (no 3D, no shrinking with distance). It's an experiment: if it doesn't feel better, we go back to today's 2:1 isometric view.
+- View switch: a **View** option in the Look section, "Standard" (today's 2:1 isometric) and "High view", remembered per browser like the style. Not part of saved games, and the sim never sees it. Works with both Modern and Classic. It replaces the isometric view only; the top-down plan view used while placing pieces and posting troops stays as it is.
+- Camera angle: the projection's tile shape and height step become settings held in one place (today they are fixed in `src/render/iso.ts`), so the view can be tilted. High view uses a less flattened, slightly odd-looking angle in the spirit of early-'90s castle games rather than strict 2:1; the exact numbers are tuned by eye against the mockups. Tile picking, depth sorting and the camera follow the active view.
+- Horizon always in view: an overcast sky with distant hills and moorland across the top of the map at the default zoom, not only when zoomed right out. Drawn as a backdrop that stays behind the land as the camera pans.
+- Taller structures: walls, towers, gatehouse and keep drawn taller next to their footprint, so they stand up like the mockups instead of looking squat. Art only; terrain heights and the sim's wall heights don't change.
+- Not in this milestone: true perspective (things getting smaller further away), camera rotation, new art.
+- **Playtest:** does High view look closer to the mockups and feel better to play than Standard? Can you still read heights, pick tiles and place pieces accurately? If not, we keep Standard.
+
 ## M6 – Siege depth
 - Sappers, ladder crews, moats.
 - Smarter enemy approach (weak points, varied directions).
