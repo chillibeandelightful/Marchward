@@ -488,7 +488,7 @@ function drawKeep(g: Graphics, x: number, y: number, base: number, top: number, 
   ] as const)
     parts.push({ x0: cx - t, x1: cx + t, y0: cy - t, y1: cy + t, base: top, top: top + 1 });
   drawMerlons(g, parts, pal);
-  // A flagpole with a plain pennant (heraldry comes in M8).
+  // A flagpole with a plain pennant (heraldry comes in M9).
   const [px, py] = pt(x + 0.5, y + 0.5, top) as [number, number];
   const poleTop = py - 46;
   g.moveTo(px, py).lineTo(px, poleTop).stroke({ width: 1.5, color: 0x3a2e22 });

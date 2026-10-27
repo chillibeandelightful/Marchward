@@ -38,29 +38,40 @@ Each milestone ends with a playable build on GitHub Pages and a short "how to te
 - Post-battle report.
 - **Playtest:** do thickness and height choices clearly matter?
 
-## M5 – Siege depth
+## M5 – Classic look (switchable visual style)
+A second visual style, "Classic", close to the drab, chunky look of early-'90s castle games, alongside the current one (called "Modern" in the menu). Built as a style layer from the start, so the look can be switched from a menu at any time and later art work slots in behind the same switch.
+- Style layer (`src/render/styles/`): one `VisualStyle` object per style holds the palette (land, water, stone, timber, sky, troops), the sprite drawing choices, the UI theme and the screen effects. Game logic and the sim never see it; render and UI read the active style.
+- Style switch in the Game tab (and a key), applied instantly without reloading, remembered per browser in localStorage. Not part of saved games.
+- Classic palette: muted olive and brown ground, grey stone with visible block courses and darker mortar, dark pines, slate water, an overcast sky band with distant hills behind the map. Folds in the M3 note that the map was too bright.
+- Classic sprites: stone-block texture on walls, towers and keep; heavier dark outlines; chunkier workers and soldiers with stronger team colours; timber scaffolding and carts in the same hand.
+- Screen effect: the map is drawn to a low-resolution texture and scaled up with nearest-neighbour filtering (about 2–3× chunky pixels), then reduced to a limited palette with ordered dithering. Strength adjustable; off in Modern.
+- Classic UI frame: bevelled iron border with rivets round the map; a parchment message panel along the bottom showing the latest log lines beside a heraldic banner; a column of icon buttons down the right for the tools and tabs (build, workers, timber, stone, defence, standing, hiring, plan, reports, save). Icons drawn in code; an openly licensed pixel font. Panels open from the icons over the frame. Modern keeps today's layout.
+- Not in this milestone: burning buildings, mounted units, villagers and seasonal visuals (later milestones), and hand-painted art. Procedural drawing will get the palette, frame and pixel feel of the reference mockups, not their painted detail.
+- **Playtest:** does Classic feel like the look you remember? Is switching styles quick and does everything still read clearly in both?
+
+## M6 – Siege depth
 - Sappers, ladder crews, moats.
 - Smarter enemy approach (weak points, varied directions).
 - Sieges with food on both sides.
 - Commander control mode.
 - **Playtest:** do the defensive choices feel like real trade-offs?
 
-## M6 – Messengers and story
+## M7 – Messengers and story
 - Event system: monthly messenger, three choices, flags and consequences, chained stories.
 - Chronicle mode event set (first batch).
 - Factions and standing.
 - **Playtest:** are the choices interesting? Do consequences show up later?
 
-## M7 – Campaign
+## M8 – Campaign
 - Multiple regions with distinct terrain.
 - Campaign length choice, difficulty levels, practice mode.
 - Region-to-region progression and carry-over.
 - **Playtest:** a full short (3-site) campaign start to finish.
 
-## M8 – Atmosphere and heraldry
+## M9 – Atmosphere and heraldry
 - Village generation, wandering villagers (who flee to the gate during raids), roads.
 - Banner designer; banners on towers and troops.
-- Seasonal visuals.
+- Seasonal visuals (in both visual styles).
 - Sound effects and music.
 - **Playtest:** does each site feel alive?
 

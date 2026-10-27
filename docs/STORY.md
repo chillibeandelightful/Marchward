@@ -37,7 +37,7 @@ Each region gets a terrain character, a difficulty step and a few region-specifi
 7. The High Passes: cliffs and narrow valleys, harsh winters.
 8. The Old Seat: the borderfolk's heartland, the hardest site, the end of the campaign.
 
-## First event chains to write (M6)
+## First event chains to write (M7)
 - The Outlaw: capture, spare, recruit or execute; consequences over a year.
 - The Abbot's Request: fund a chapel; pay now or deal with the Church later.
 - The Baron's Wedding: a marriage alliance that brings troops or trouble.
