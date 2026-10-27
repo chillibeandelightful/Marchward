@@ -30,7 +30,7 @@ export const MODERN: VisualStyle = {
   },
   castle: {
     stone: { top: 0xcfc6b0, face: 0xb0a690, dark: 0x2b241c },
-    planned: { top: 0xdde9f8, face: 0xa9c1e0, dark: 0x34465e },
+    planned: { top: 0xf3ecd6, face: 0xcfc4a6, dark: 0x3a3226 },
     banner: 0xb3342a,
     scaffold: 0x8a6a42,
     masonry: 'courses',

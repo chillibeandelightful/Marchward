@@ -96,3 +96,12 @@ After each milestone, add a section:
 - Pick **1 Look** or any other tool to return to the normal view. Press **T** to turn the top-down switch off (and on again) if you'd rather place in the normal view.
 - **The question:** is placing pieces and troops easier from above? Is anything missing from the plan that you needed to see?
 **Known issues:** the plan doesn't show trees, the camp's tents or workers (the camp is a brown outline). Extras show only the oil cauldron (an orange dot), not arrow slits. Earthworks tools stay isometric.
+
+## Follow-up – Planned pieces as footings (2026-10-27)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- Plan a few walls, towers, a gatehouse and a keep, then pick **1 Look**. Instead of a pale blue model, each planned piece is a pale outline of its footings on the ground. A run of wall reads as one long double line, towers are squares or circles, the gatehouse shows its passage, and the keep is a large square.
+- The top-down view shows the same outlines.
+- Hire workers and start the clock: as a piece is built, stone rises inside its outline with scaffolding, and the outline goes once it's finished.
+- A planned piece with a problem (for example, left standing on a slope that later earthworks break) is outlined in red.
+**Known issues:** where a road runs through a planned piece, the road can be drawn over part of the outline.
