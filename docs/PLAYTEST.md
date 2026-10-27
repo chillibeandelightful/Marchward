@@ -73,3 +73,14 @@ After each milestone, add a section:
 - **After the battle** the game pauses again and the report opens: losses, which walls fell and why, what your archers, slits and cauldrons did, and what needs repairing. Damaged pieces go back on the building list; breached ones drop to 20% built. Old reports stay in the Defence tab.
 - **Try the milestone question: do thickness and height matter?** Build two castles (or one, then reload) and compare: a Thin wall has 100 HP and a Thick one 280, so raiders break through thin walls much sooner; archers on High walls and towers reach further (shown when you point at a piece) and raider archers below struggle to hit them.
 **Known issues:** raiders only batter (no ladders, sappers or moats yet; those are M6). You can't give orders during a battle (Classic control; Commander mode is M6). Raiders head for the weakest-looking way in by a simple rule, not the smarter weak-point choice planned for M6. Balance numbers are first guesses: a castle left without enough soldiers gets its keep or camp plundered fairly often from the second year. Mouse and keyboard only (PC only, by design).
+
+## Follow-up – Top-down view for placing (2026-10-27)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- Pick **2 Wall**, **3 Tower**, **4 Gatehouse** or **5 Keep**. The map flattens into a plan seen from straight above: land coloured by terrain and a little lighter the higher it is, thin lines where the ground slopes, heavy dark lines along cliffs, pieces as their outlines. The same spot stays in the middle of the screen.
+- Lay walls and place pieces as usual. The green or red preview, the costs and the checks all work the same; the tile under the pointer is outlined and is always the one you click.
+- Pick **0 Troops** and post soldiers: red circles are archers, red squares swordsmen. Several on one tile spread out a little.
+- Bring a raid (Defence tab). While the game waits before the fight, tool 0 still shows the top-down view with everyone on the field (raiders are drab). Press Space: the view goes back to isometric for the fight.
+- Pick **1 Look** or any other tool to return to the normal view. Press **T** to turn the top-down switch off (and on again) if you'd rather place in the normal view.
+- **The question:** is placing pieces and troops easier from above? Is anything missing from the plan that you needed to see?
+**Known issues:** the plan doesn't show trees, the camp's tents or workers (the camp is a brown outline). Extras show only the oil cauldron (an orange dot), not arrow slits. Earthworks tools stay isometric.

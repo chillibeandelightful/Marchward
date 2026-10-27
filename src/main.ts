@@ -19,6 +19,8 @@ import { CastleArt, pickPiece } from './render/castleArt';
 import { isoToScreen } from './render/iso';
 import { buildTileShape, buildTileShapes, pickTile, surfaceLevel, type TileShape } from './render/tileGeometry';
 import { TerrainView } from './render/terrainView';
+import { isoToTile, pickPlanTile, PLAN_TILE, planToTile, tileToIso, tileToPlan, wantsTopDown } from './render/topDown';
+import { TopDownView } from './render/topDownView';
 import { drawWorkers } from './render/workersArt';
 import { CameraInput } from './ui/cameraInput';
 import { Designer, type Tile } from './ui/designer';
@@ -100,11 +102,16 @@ async function start(): Promise<void> {
   const ghosts = new Graphics();
   const world = new Container();
   world.addChild(terrain.root, ghosts);
-  app.stage.addChild(world);
+  // The flat plan, shown instead of the isometric world while placing pieces or troops.
+  const plan = new TopDownView();
+  plan.root.visible = false;
+  let planDirty = true;
+  app.stage.addChild(world, plan.root);
 
   /** Something changed: rebuild the plan snapshot and redraw what's needed. `land` lists tiles whose drawn height may have changed. */
   const refresh = (land: readonly Tile[] | 'all') => {
     routes.clear();
+    planDirty = true;
     view = viewPlan(sim.map, sim.plan);
     report = planReport(sim.map, view);
     art.setView(shownView(), new Set(report.problems.map((p) => p.piece.id)));
@@ -149,6 +156,7 @@ async function start(): Promise<void> {
     ] as const,
     'plan',
   );
+  const battlePhase = () => (sim.defence.battle ? (deploying(sim.defence.battle) ? 'deploy' : 'fight') : null);
   const designer = new Designer(
     {
       get base() {
@@ -167,7 +175,7 @@ async function start(): Promise<void> {
       get sim() {
         return sim;
       },
-      locked: () => (sim.defence.battle ? (deploying(sim.defence.battle) ? 'deploy' : 'fight') : null),
+      locked: () => battlePhase(),
     },
     toolsEl,
     tabs.pages.plan,
@@ -245,17 +253,44 @@ async function start(): Promise<void> {
   camera.setBounds(minX, minY, maxX, maxY);
   const home = () => {
     camera.zoom = Math.max(camera.minZoom, Math.min(0.75, fit * 1.6));
-    camera.centreOn((minX + maxX) / 2, (minY + maxY) / 2);
+    if (topDown) camera.centreOn((sim.map.width * PLAN_TILE) / 2, (sim.map.height * PLAN_TILE) / 2);
+    else camera.centreOn((minX + maxX) / 2, (minY + maxY) / 2);
+  };
+  /** Showing the flat plan rather than the isometric view. T turns this off and on for the placing tools. */
+  let topDown = false;
+  let topDownAllowed = true;
+  /** Switch views, keeping the same spot of land in the middle of the screen. */
+  const setTopDown = (on: boolean) => {
+    if (on === topDown) return;
+    topDown = on;
+    world.visible = !on;
+    plan.root.visible = on;
+    if (on) {
+      const t = isoToTile(camera.x, camera.y);
+      const p = tileToPlan(t.x, t.y);
+      camera.setBounds(0, 0, sim.map.width * PLAN_TILE, sim.map.height * PLAN_TILE);
+      camera.centreOn(p.x, p.y);
+    } else {
+      const t = planToTile(camera.x, camera.y);
+      const p = tileToIso(t.x, t.y);
+      camera.setBounds(minX, minY, maxX, maxY);
+      camera.centreOn(p.x, p.y);
+    }
   };
   home();
 
   const input = new CameraInput(app.canvas, camera, {
     onHome: home,
-    onToggleGrid: () => terrain.setGrid(!terrain.gridVisible),
+    onToggleGrid: () => {
+      terrain.setGrid(!terrain.gridVisible);
+      plan.setGrid(terrain.gridVisible);
+      planDirty = true;
+    },
     canPan: (e) => !designer.wantsPress(e.button),
   });
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyV') forcePlanned = !forcePlanned;
+    else if (e.code === 'KeyT') topDownAllowed = !topDownAllowed;
   });
   const hud = new Hud(readoutEl);
 
@@ -303,6 +338,10 @@ async function start(): Promise<void> {
       tileToScreen(x: number, y: number) {
         const s = shapeAt[y * sim.map.width + x];
         if (!s) return null;
+        if (topDown) {
+          const q = tileToPlan(x, y);
+          return camera.worldToScreen(q.x, q.y, app.screen.width, app.screen.height);
+        }
         const c = s.corners;
         const piece = pieceAt(view, x, y);
         const p = isoToScreen(x, y, (c.n + c.e + c.s + c.w) / 4 + (piece ? pieceLevels(piece) : 0));
@@ -319,6 +358,9 @@ async function start(): Promise<void> {
       },
       camera,
       game,
+      get topDown() {
+        return topDown;
+      },
       get sim() {
         return sim;
       },
@@ -368,20 +410,41 @@ async function start(): Promise<void> {
       if (last) reportView.show(last);
     }
 
+    setTopDown(topDownAllowed && wantsTopDown(designer.tool, battlePhase()));
+    if (topDown && planDirty) {
+      planDirty = false;
+      plan.setLand(shownMap());
+      plan.setPieces(
+        shownView(),
+        new Set(report.problems.map((p) => p.piece.id)),
+        (p) => pieceProgress(sim.map, sim.works, p),
+        (p) => (sim.defence.battle?.pieces[p.id]?.breachedAt ?? null) !== null,
+      );
+    }
+
     const w = app.screen.width;
     const h = app.screen.height;
-    world.scale.set(camera.zoom);
-    world.position.set(w / 2 - camera.x * camera.zoom, h / 2 - camera.y * camera.zoom);
+    for (const c of [world, plan.root]) {
+      c.scale.set(camera.zoom);
+      c.position.set(w / 2 - camera.x * camera.zoom, h / 2 - camera.y * camera.zoom);
+    }
 
     const p = input.pointer;
     const wp = p ? camera.screenToWorld(p.x, p.y, w, h) : null;
-    const groundTile = wp ? pickTile(shapes, wp.x, wp.y) : null;
-    // Pointing at a wall or tower means that piece's tile, not the ground behind it.
-    const piece =
-      wp && groundTile && designer.tool !== 'raise' && designer.tool !== 'lower'
-        ? pickPiece(shownView(), wp.x, wp.y, groundTile.x + groundTile.y)
-        : null;
-    const next = piece ? (shapeAt[piece.y * sim.map.width + piece.x] ?? groundTile) : groundTile;
+    let next: TileShape | null;
+    if (topDown) {
+      // From straight above, the tile under the pointer is the one meant: nothing hides it.
+      const t = wp ? pickPlanTile(sim.map.width, sim.map.height, wp.x, wp.y) : null;
+      next = t ? (shapeAt[t.y * sim.map.width + t.x] ?? null) : null;
+    } else {
+      const groundTile = wp ? pickTile(shapes, wp.x, wp.y) : null;
+      // Pointing at a wall or tower means that piece's tile, not the ground behind it.
+      const piece =
+        wp && groundTile && designer.tool !== 'raise' && designer.tool !== 'lower'
+          ? pickPiece(shownView(), wp.x, wp.y, groundTile.x + groundTile.y)
+          : null;
+      next = piece ? (shapeAt[piece.y * sim.map.width + piece.x] ?? groundTile) : groundTile;
+    }
     if (next !== hovered) {
       hovered = next;
       terrain.setHover(hovered);
@@ -397,6 +460,20 @@ async function start(): Promise<void> {
         art.previewTiles = new Set(preview.specs.map((s) => `${s.x},${s.y}`));
         art.drawGhosts(ghosts, preview.specs, preview.check.problems);
       }
+    }
+
+    if (topDown) {
+      const battle = sim.defence.battle;
+      plan.setOverlay(
+        {
+          hover: hovered ? { x: hovered.x, y: hovered.y } : null,
+          ghosts: preview ? { specs: preview.specs, problems: preview.check.problems } : null,
+          posts: sim.defence.posts,
+          battle: battle && deploying(battle) ? battle : null,
+          camp: sim.camp,
+        },
+        shownMap(),
+      );
     }
 
     terrain.clearActors();
