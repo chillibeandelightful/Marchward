@@ -89,6 +89,28 @@ A trial of the reference mockups' high-angle three-quarter view, staying with fl
 - Expanded units: spearmen, crossbowmen, knights, rams, siege towers.
 - Hand-made or commissioned art replacing procedural sprites.
 
+## Backlog (ideas, not yet scheduled)
+Ideas from playtesting to fold into a milestone later. Nothing here is built until it's scheduled.
+
+### Wall collapse as an occasional event
+A wall section now and then gives way on its own, outside battle. Mostly a random event, but weighted towards walls that are poorly supported, so it rewards sensible building rather than being pure bad luck.
+- What raises the chance: a free end (the next section along is unfinished or missing), no tower or gatehouse within a few tiles along the curtain, High and Thin walls, marsh or slope underfoot, and damage left unrepaired after a raid. A finished wall between two towers on firm ground should almost never fall.
+- Fair warning: a crack shows on the piece and a line goes in the log some days before it falls, so the player can put masons on it. Repairing it in time stops the collapse.
+- A collapse drops the piece to rubble (as a breach does after battle) and it has to be rebuilt.
+- Rolled on the seeded RNG once a month, with the chances in `src/data/`, so it stays reproducible and tunable. Rare: a few times a campaign, not every season.
+- Suggested slot: M7, as one of the first events through the new event system. The support check (free ends, tower spacing) could also feed the M6 enemy weak-point choice.
+
+### Smarter build order
+Today workers take earthworks first, then pieces in the order they were placed (`src/sim/works.ts`). A tower placed on a wall goes to the back of the queue, so if you lay out all the walls and then add the corner towers, the walls all go up first and the corners stay empty until last. The goal is a sensible order without the player managing a priority list.
+
+Options:
+- **A. Towers first.** Towers and the gatehouse rank ahead of the walls they join, and a wall section waits until the towers at its ends are started. Small change to the job order; fixes the empty corners directly.
+- **B. Connected order outward from the keep.** Rank curtain jobs by how far along the curtain they are from the keep (or the gatehouse, if the keep is far inside the walls), with towers ahead of walls at the same distance. The castle grows as one connected piece, two ends spreading round the ring, so there are no isolated finished sections. Earthworks still come first.
+- **Escape hatch for either:** a single "build this next" click on a piece moves it to the front. One click, not a priority list.
+
+Agreed (playtester, 2026-10-27): **B with towers ahead of walls at each step**, plus the "build this next" click. It fixes the corners, makes the castle rise in a believable order whether it is laid out all at once or piece by piece, and fits wall collapse above, since connected building leaves few free ends. If it turns out too clever in play, A on its own is the fallback.
+- Suggested slot: a small follow-up any time; it touches only the job order in `works.ts` and its tests.
+
 ## Progress log
 Update as milestones complete.
 
@@ -155,3 +177,4 @@ Update as milestones complete.
 - Combat visuals in both styles: raiders who reach the keep or camp set it alight (flames on the keep's front faces or the tents, spreading as they plunder, with a column of smoke); a fallen piece throws up a burst of dust and then smokes from its rubble; battering raiders kick up dust; oil and steam take the style's colours. These are drawn from the battle state and the clock only, so nothing changes in the sim.
 - Tests: both styles cover every terrain; the style switch; Modern has no effect or frame; the sim never imports the styles and saves never mention them; the palette's size, determinism and that it keeps every ground colour; look settings fall back to defaults when missing or broken.
 - Follow-up (2026-10-27): a top-down plan view, shown only while placing castle pieces and posting troops (also during the pause before a fight); everything else stays isometric. T turns it off and on. Tests cover when it's used, coordinate conversion and tile picking.
+- Follow-up (2026-10-27): planned pieces are shown as the outline of their footings on the ground (in both views), not as a pale blue model. Tests cover the outlines of walls, wall runs, walls into towers, towers, the gatehouse and the keep.

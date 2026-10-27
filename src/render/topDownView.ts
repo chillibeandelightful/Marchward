@@ -1,10 +1,11 @@
 import { Container, Graphics } from 'pixi.js';
 import { KEEP, WALL_THICKNESS } from '../data/castle';
 import type { BattleState } from '../sim/battle';
-import { footprint, isCurtain, type Piece, type PieceSpec, type PlanView } from '../sim/castle';
+import { footprint, isCurtain, linked, pieceAt, type Piece, type PieceSpec, type PlanView } from '../sim/castle';
 import type { Post } from '../sim/defence';
 import { heightAt, NEIGHBOURS, stepBetween, terrainAt, type TerrainMap } from '../sim/terrain';
 import { tinted } from './castleArt';
+import { foundationOutline } from './foundation';
 import { style, type Palette } from './styles';
 import { shade } from './terrainStyle';
 import { PLAN_TILE as T } from './topDown';
@@ -82,7 +83,7 @@ export class TopDownView {
     }
   }
 
-  /** Redraw the castle pieces: built in stone, planned as a pale model, problems in red. */
+  /** Redraw the castle pieces: built in stone, the footings of planned ones marked out, problems in red. */
   setPieces(view: PlanView, problems: ReadonlySet<number>, progress: (p: Piece) => number, rubble: (p: Piece) => boolean): void {
     const g = this.pieces.clear();
     const { stone, planned } = style().castle;
@@ -95,11 +96,10 @@ export class TopDownView {
         continue;
       }
       const done = progress(p);
-      if (problems.has(p.id)) drawPiece(g, view.map, curtain, p, problem, 1);
-      else if (done >= 1) drawPiece(g, view.map, curtain, p, stone, 1);
+      if (done >= 1) drawPiece(g, view.map, curtain, p, problems.has(p.id) ? problem : stone, 1);
       else {
-        drawPiece(g, view.map, curtain, p, planned, 1);
         if (done > 0) drawPiece(g, view.map, curtain, p, stone, done);
+        drawFoundation(g, view, p, problems.has(p.id) ? BAD_TINT : planned.top, planned.dark);
       }
     }
   }
@@ -134,6 +134,24 @@ export class TopDownView {
     }
 
     if (o.hover) g.rect(o.hover.x * T, o.hover.y * T, T, T).stroke({ width: 2, color: terrain.hover, alpha: 0.95 });
+  }
+}
+
+/** The outline of a planned piece's footings. */
+function drawFoundation(g: Graphics, view: PlanView, p: Piece, colour: number, shadow: number): void {
+  const { segments, circles } = foundationOutline(p, (nx, ny) => {
+    const o = pieceAt(view, nx, ny);
+    if (!o || o.kind === 'keep' || !linked(view, p.x, p.y, nx, ny)) return null;
+    return o.kind === 'tower' && o.shape === 'round' ? 'round-tower' : o.kind;
+  });
+  const c = (v: number) => (v + 0.5) * T;
+  for (const [width, color, alpha] of [
+    [4, shadow, 0.35],
+    [2, colour, 0.95],
+  ] as const) {
+    for (const [x0, y0, x1, y1] of segments) g.moveTo(c(x0), c(y0)).lineTo(c(x1), c(y1));
+    for (const k of circles) g.circle(c(k.x), c(k.y), k.r * T);
+    g.stroke({ width, color, alpha, cap: 'round', join: 'round' });
   }
 }
 

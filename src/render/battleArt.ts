@@ -93,7 +93,8 @@ export function drawSoldier(
   const defender = UNITS[type].side === 'defender';
   const archer = !!UNITS[type].bow;
   const walking = act === 'walk';
-  const step = walking ? Math.sin(t * 9) * 1.4 : 0;
+  // An unhurried stride to match the walking pace.
+  const step = walking ? Math.sin(t * 4.5) * 1.4 : 0;
   // Drawn round (0, 0) at the feet, scaled up for chunkier figures.
   g.setTransform(f.scale, 0, 0, f.scale, sx, sy);
   if (!onWall) g.ellipse(0, 0, 3.5, 1.5).fill({ color: 0x000000, alpha: 0.25 });
