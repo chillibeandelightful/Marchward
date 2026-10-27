@@ -99,7 +99,7 @@ Options:
 - **B. Connected order outward from the keep.** Rank curtain jobs by how far along the curtain they are from the keep (or the gatehouse, if the keep is far inside the walls), with towers ahead of walls at the same distance. The castle grows as one connected piece, two ends spreading round the ring, so there are no isolated finished sections. Earthworks still come first.
 - **Escape hatch for either:** a single "build this next" click on a piece moves it to the front. One click, not a priority list.
 
-Recommendation: **B with towers ahead of walls at each step**, plus the "build this next" click. It fixes the corners, makes the castle rise in a believable order whether it is laid out all at once or piece by piece, and fits wall collapse above, since connected building leaves few free ends. If it turns out too clever in play, A on its own is the fallback.
+Agreed (playtester, 2026-10-27): **B with towers ahead of walls at each step**, plus the "build this next" click. It fixes the corners, makes the castle rise in a believable order whether it is laid out all at once or piece by piece, and fits wall collapse above, since connected building leaves few free ends. If it turns out too clever in play, A on its own is the fallback.
 - Suggested slot: a small follow-up any time; it touches only the job order in `works.ts` and its tests.
 
 ## Progress log
