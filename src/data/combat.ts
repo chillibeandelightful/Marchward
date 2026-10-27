@@ -31,7 +31,7 @@ export const UNITS: Record<UnitType, UnitKind> = {
     plural: 'Swordsmen',
     side: 'defender',
     hp: 65,
-    speed: 1.3,
+    speed: 0.43,
     melee: { damage: 10, cooldown: 1 },
     bow: null,
     batter: 0,
@@ -41,7 +41,7 @@ export const UNITS: Record<UnitType, UnitKind> = {
     plural: 'Archers',
     side: 'defender',
     hp: 35,
-    speed: 1.2,
+    speed: 0.4,
     melee: { damage: 3, cooldown: 1.2 },
     bow: { damage: 12, cooldown: 2.2, hit: 0.65 },
     batter: 0,
@@ -51,7 +51,7 @@ export const UNITS: Record<UnitType, UnitKind> = {
     plural: 'Raiders',
     side: 'attacker',
     hp: 50,
-    speed: 1.2,
+    speed: 0.4,
     melee: { damage: 8, cooldown: 1 },
     bow: null,
     batter: 1,
@@ -61,7 +61,7 @@ export const UNITS: Record<UnitType, UnitKind> = {
     plural: 'Raider archers',
     side: 'attacker',
     hp: 35,
-    speed: 1.1,
+    speed: 0.37,
     melee: { damage: 3, cooldown: 1.2 },
     bow: { damage: 10, cooldown: 2.4, hit: 0.6 },
     batter: 0,
@@ -122,7 +122,7 @@ export const COMBAT = {
   /** The raiders break and flee once they have lost this share of their number. */
   breakAt: 0.65,
   /** They give up and leave after this long. */
-  maxSeconds: 180,
+  maxSeconds: 270,
   /** Anyone still on the field this long after the retreat starts has got away. */
   fleeSeconds: 40,
   /** A breached piece is left this far built (footings and rubble) and has to be rebuilt. */
