@@ -3,6 +3,13 @@ import { fromSave, toSave, type SaveFile } from '../sim/save';
 import { today, type SimState } from '../sim/state';
 import { button, el, setClass, setText } from './dom';
 import type { GameHost } from './host';
+import type { Look } from './look';
+
+/** Reading and changing the look (visual style and screen effect). */
+export interface LookHost {
+  readonly look: Look;
+  setLook(look: Look): void;
+}
 
 export type Slot = 'save' | 'autosave';
 const KEYS: Record<Slot, string> = { save: 'marchward.save', autosave: 'marchward.autosave' };
@@ -33,6 +40,14 @@ export function readGame(slot: Slot): SaveFile | null | string {
   }
 }
 
+/** The keys, listed here too because the Classic frame has no room for the help box. */
+const KEYS_HELP = [
+  'Space pauses or starts the clock · V shows the land as planned',
+  'Right-drag, or WASD / arrow keys, to move · mouse wheel or + / − to zoom',
+  '1–9, 0 pick a tool · R turns the gatehouse · Esc cancels',
+  'C recentres · G shows the grid · L switches between Modern and Classic',
+];
+
 function describe(file: SaveFile | null | string): string {
   if (file === null) return 'empty';
   if (typeof file === 'string') return file;
@@ -48,9 +63,12 @@ export class GamePanel {
   private readonly newButton: HTMLButtonElement;
   private newArmed = false;
 
+  private readonly lookRows: { b: HTMLButtonElement; on: (l: Look) => boolean }[] = [];
+
   constructor(
     root: HTMLElement,
     private readonly host: GameHost,
+    private readonly looks: LookHost,
   ) {
     const s = el('section');
     s.append(
@@ -81,8 +99,59 @@ export class GamePanel {
       this.say('Started a new game.', false);
     });
     s.append(this.newButton, this.notice);
-    root.replaceChildren(s);
+    const keys = el('section', 'classic-only');
+    keys.append(el('strong', undefined, 'Keys'));
+    for (const line of KEYS_HELP) keys.append(el('div', 'dim', line));
+    root.replaceChildren(this.lookSection(), s, keys);
     this.refresh();
+  }
+
+  /** Style buttons, and for Classic how chunky the pixels are and how much dithering. Kept in this browser, not in saves. */
+  private lookSection(): HTMLElement {
+    const s = el('section');
+    const row = (label: string, options: readonly [string, Partial<Look>][]) => {
+      const r = el('div', 'option-row');
+      r.append(el('span', undefined, label));
+      for (const [text, change] of options) {
+        const b = button(text, () => this.looks.setLook({ ...this.looks.look, ...change }));
+        const keys = Object.keys(change) as (keyof Look)[];
+        this.lookRows.push({ b, on: (l) => keys.every((k) => l[k] === change[k]) });
+        r.append(b);
+      }
+      return r;
+    };
+    this.classicOnly = [
+      row('Pixels', [
+        ['Fine', { pixel: 1 }],
+        ['Chunky', { pixel: 2 }],
+        ['Chunkier', { pixel: 3 }],
+      ]),
+      row('Dithering', [
+        ['Off', { dither: 0 }],
+        ['Light', { dither: 0.5 }],
+        ['Full', { dither: 1 }],
+      ]),
+    ];
+    s.append(
+      el('strong', undefined, 'Look'),
+      el('div', 'dim', 'Classic is darker and grittier, with chunky pixels and a frame of icons. Press L to switch at any time.'),
+      row('Style', [
+        ['Modern', { style: 'modern' }],
+        ['Classic', { style: 'classic' }],
+      ]),
+      ...this.classicOnly,
+    );
+    this.showLook();
+    return s;
+  }
+
+  private classicOnly: HTMLElement[] = [];
+
+  /** Mark the chosen look's buttons; the screen-effect rows only apply to Classic. */
+  showLook(): void {
+    const look = this.looks.look;
+    for (const { b, on } of this.lookRows) setClass(b, on(look) ? 'active' : '');
+    for (const r of this.classicOnly) r.style.display = look.style === 'classic' ? '' : 'none';
   }
 
   private load(slot: Slot): void {

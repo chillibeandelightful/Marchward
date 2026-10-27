@@ -11,22 +11,15 @@ import {
   type PlanView,
 } from '../sim/castle';
 import { heightAt, inBounds, NEIGHBOURS, stepBetween } from '../sim/terrain';
+import { hash2 } from '../sim/noise';
 import { isoToScreen, TILE_H, TILE_W } from './iso';
-import { shade } from './terrainStyle';
+import { style, type Palette } from './styles';
+import { mix, shade } from './terrainStyle';
 import type { RowExtras } from './terrainView';
 import { tileCorners, type TileShape } from './tileGeometry';
 
-/** Colours for one piece. Plain stone, or tinted for previews and problems. */
-export interface Palette {
-  top: number;
-  face: number;
-  dark: number;
-}
-
-export const STONE: Palette = { top: 0xcfc6b0, face: 0xb0a690, dark: 0x2b241c };
 const BAD_TINT = 0xd8452f;
 const GOOD_TINT = 0x8fe08a;
-const BANNER = 0xb3342a;
 const RAISE_COLOUR = 0xf2c14e;
 const LOWER_COLOUR = 0x5fb4ea;
 
@@ -34,12 +27,12 @@ export function tinted(p: Palette, colour: number, amount: number): Palette {
   return { top: mix(p.top, colour, amount), face: mix(p.face, colour, amount), dark: p.dark };
 }
 
-export const PROBLEM = tinted(STONE, BAD_TINT, 0.45);
-export const GHOST_OK = tinted(STONE, GOOD_TINT, 0.35);
-export const GHOST_BAD = tinted(STONE, BAD_TINT, 0.55);
-/** Pieces that are planned but not yet built: a pale blue model of the finished piece. */
-export const PLANNED: Palette = { top: 0xdde9f8, face: 0xa9c1e0, dark: 0x34465e };
-const SCAFFOLD = 0x8a6a42;
+/** Palettes for the active style: built stone, a problem, the placement previews and the planned model. */
+const stone = () => style().castle.stone;
+const problem = () => tinted(stone(), BAD_TINT, 0.45);
+const ghostOk = () => tinted(stone(), GOOD_TINT, 0.35);
+const ghostBad = () => tinted(stone(), BAD_TINT, 0.55);
+const planned = () => style().castle.planned;
 
 /** How far a piece sinks below its tile's lowest corner, so slopes never show a gap under it. */
 const SINK = 0.2;
@@ -97,13 +90,13 @@ export class CastleArt implements RowExtras {
       if (frontDiagonal(p) !== diagonal) continue;
       const done = this.progress(p);
       if (this.rubble(p)) this.drawRubble(g, p);
-      else if (this.problems.has(p.id)) this.drawPiece(g, p, PROBLEM);
-      else if (done >= 1) this.drawPiece(g, p, STONE);
+      else if (this.problems.has(p.id)) this.drawPiece(g, p, problem());
+      else if (done >= 1) this.drawPiece(g, p, stone());
       else {
         // The plan as a pale model, with the built part in stone and scaffolding over it.
-        this.drawPiece(g, p, PLANNED);
+        this.drawPiece(g, p, planned());
         if (done > 0) {
-          this.drawPiece(g, p, STONE, done);
+          this.drawPiece(g, p, stone(), done);
           this.drawScaffold(g, p, done);
         }
       }
@@ -150,14 +143,14 @@ export class CastleArt implements RowExtras {
         blocks.push({ x0: x + u * 0.8 - 0.1, y0: y + v * 0.8 - 0.1, x1: x + u * 0.8 + 0.1, y1: y + v * 0.8 + 0.1, base, top: base + SINK + h });
       }
       blocks.sort((a, b) => a.x0 + a.y0 - (b.x0 + b.y0));
-      for (const b of blocks) drawBox(g, b, tinted(STONE, 0x5a5040, 0.35));
+      for (const b of blocks) drawBox(g, b, tinted(stone(), 0x5a5040, 0.35));
     }
   }
 
   /** Previews float over everything else, so they are never hidden behind a hill. */
   drawGhosts(g: Graphics, specs: readonly PieceSpec[], problems: readonly (string | null)[]): void {
     const order = specs.map((s, i) => ({ s, bad: problems[i] !== null })).sort((a, b) => frontDiagonal(a.s) - frontDiagonal(b.s));
-    for (const { s, bad } of order) this.drawPiece(g, s, bad ? GHOST_BAD : GHOST_OK);
+    for (const { s, bad } of order) this.drawPiece(g, s, bad ? ghostBad() : ghostOk());
   }
 
   /** Ground shapes, for drawing earthwork marks on the land as it will be. */
@@ -207,7 +200,7 @@ export class CastleArt implements RowExtras {
       g
         .moveTo(...(pt(ax, ay, al) as [number, number]))
         .lineTo(...(pt(bx, by, bl) as [number, number]))
-        .stroke({ width, color: SCAFFOLD, alpha: 0.95 });
+        .stroke({ width, color: style().castle.scaffold, alpha: 0.95 });
     const poles: [number, number][] = [
       [x0 + 0.08, y1],
       [(x0 + x1) / 2, y1],
@@ -300,9 +293,13 @@ function pt(x: number, y: number, level: number): number[] {
 /** The three visible faces of a box: the top, the +y face (lit) and the +x face (shaded). */
 function drawBox(g: Graphics, b: Box, pal: Palette, courses = false): void {
   const { x0, y0, x1, y1, base, top } = b;
-  g.poly([...pt(x1, y1, top), ...pt(x0, y1, top), ...pt(x0, y1, base), ...pt(x1, y1, base)]).fill(shade(pal.face, 1));
-  g.poly([...pt(x1, y0, top), ...pt(x1, y1, top), ...pt(x1, y1, base), ...pt(x1, y0, base)]).fill(shade(pal.face, 0.78));
-  if (courses) {
+  const { masonry, outline } = style().castle;
+  const left = [...pt(x1, y1, top), ...pt(x0, y1, top), ...pt(x0, y1, base), ...pt(x1, y1, base)];
+  const right = [...pt(x1, y0, top), ...pt(x1, y1, top), ...pt(x1, y1, base), ...pt(x1, y0, base)];
+  g.poly(left).fill(shade(pal.face, 1));
+  g.poly(right).fill(shade(pal.face, 0.78));
+  if (courses && masonry === 'blocks') drawBlocks(g, b, pal);
+  else if (courses) {
     // Faint courses of stone, one per half level.
     for (let lv = Math.ceil((base + 0.01) * 2) / 2; lv < top - 0.1; lv += 0.5) {
       g.moveTo(...(pt(x0, y1, lv) as [number, number]))
@@ -311,9 +308,54 @@ function drawBox(g: Graphics, b: Box, pal: Palette, courses = false): void {
         .stroke({ width: 0.7, color: pal.dark, alpha: 0.18 });
     }
   }
+  if (outline > 0) {
+    g.poly(left).stroke({ width: outline, color: pal.dark, alpha: 0.85, join: 'round' });
+    g.poly(right).stroke({ width: outline, color: pal.dark, alpha: 0.85, join: 'round' });
+  }
   g.poly([...pt(x0, y0, top), ...pt(x1, y0, top), ...pt(x1, y1, top), ...pt(x0, y1, top)])
     .fill(pal.top)
-    .stroke({ width: 0.8, color: pal.dark, alpha: 0.35 });
+    .stroke(outline > 0 ? { width: outline, color: pal.dark, alpha: 0.85, join: 'round' } : { width: 0.8, color: pal.dark, alpha: 0.35 });
+}
+
+/** Height of one course of blocks, in levels, and the length of a block, in tiles. */
+const COURSE = 0.25;
+const BLOCK = 0.2;
+
+/**
+ * Stone blocks on both visible faces: a mortar line under each course, staggered joints between
+ * blocks, and a few blocks a shade lighter or darker, so walls read as built of stone.
+ */
+function drawBlocks(g: Graphics, b: Box, pal: Palette): void {
+  const { x0, y0, x1, y1, base, top } = b;
+  const mortar = { width: 0.8, color: pal.dark, alpha: 0.5 };
+  const faces = [
+    { from: x0, to: x1, at: (u: number, lv: number) => pt(u, y1, lv), lit: 1 },
+    { from: y0, to: y1, at: (u: number, lv: number) => pt(x1, u, lv), lit: 0.78 },
+  ];
+  const first = Math.ceil((base + 0.01) / COURSE);
+  for (const f of faces) {
+    for (let c = first; c * COURSE < top - 0.05; c++) {
+      const lo = c * COURSE;
+      const hi = Math.min(top, lo + COURSE);
+      const [ax, ay] = f.at(f.from, lo) as [number, number];
+      const [bx, by] = f.at(f.to, lo) as [number, number];
+      g.moveTo(ax, ay).lineTo(bx, by).stroke(mortar);
+      // Joints, offset by half a block on every other course.
+      const offset = c % 2 === 0 ? 0 : BLOCK / 2;
+      for (let u = Math.floor(f.from / BLOCK) * BLOCK + offset; u < f.to; u += BLOCK) {
+        if (u <= f.from + 0.02) continue;
+        const [jx, jy] = f.at(u, lo) as [number, number];
+        const [kx, ky] = f.at(u, hi) as [number, number];
+        g.moveTo(jx, jy).lineTo(kx, ky).stroke(mortar);
+        const h = hash2(Math.round(u * 50), c, 31);
+        if (h < 0.18 || h > 0.9) {
+          const u2 = Math.min(f.to, u + BLOCK);
+          const quad = [...f.at(u, lo), ...f.at(u2, lo), ...f.at(u2, hi), ...f.at(u, hi)];
+          g.poly(quad).fill({ color: shade(pal.face, f.lit * (h < 0.18 ? 0.86 : 1.12)), alpha: 0.9 });
+        }
+      }
+    }
+  }
 }
 
 /** Merlons along both long edges of a box running along the given axis. */
@@ -410,6 +452,22 @@ function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: numb
   };
   g.poly(half(Math.PI, Math.PI / 2)).fill(shade(pal.face, 1));
   g.poly(half(Math.PI / 2, 0)).fill(shade(pal.face, 0.78));
+  const { masonry, outline } = style().castle;
+  if (masonry === 'blocks') {
+    // Courses round the drum, with joints staggered course by course.
+    const mortar = { width: 0.8, color: pal.dark, alpha: 0.5 };
+    for (let c = Math.ceil((base + 0.01) / COURSE); c * COURSE < top - 0.05; c++) {
+      const lo = isoToScreen(x, y, c * COURSE).sy;
+      const hi = isoToScreen(x, y, Math.min(top, (c + 1) * COURSE)).sy;
+      g.poly(arc(lo, 0, Math.PI), false).stroke(mortar);
+      for (let i = c % 2 === 0 ? 1 : 0.5; i < 7; i++) {
+        const a = (i / 7) * Math.PI;
+        const jx = c0.sx + rx * Math.cos(a);
+        g.moveTo(jx, lo + ry * Math.sin(a)).lineTo(jx, hi + ry * Math.sin(a)).stroke(mortar);
+      }
+    }
+  }
+  if (outline > 0) g.poly(half(Math.PI, 0)).stroke({ width: outline, color: pal.dark, alpha: 0.85, join: 'round' });
   if (!finished) {
     g.ellipse(c1.sx, c1.sy, rx, ry).fill(pal.top).stroke({ width: 0.8, color: pal.dark, alpha: 0.35 });
     return;
@@ -492,13 +550,7 @@ function drawKeep(g: Graphics, x: number, y: number, base: number, top: number, 
   const [px, py] = pt(x + 0.5, y + 0.5, top) as [number, number];
   const poleTop = py - 46;
   g.moveTo(px, py).lineTo(px, poleTop).stroke({ width: 1.5, color: 0x3a2e22 });
-  g.poly([px, poleTop, px + 20, poleTop + 5, px, poleTop + 10]).fill(BANNER);
-}
-
-function mix(a: number, b: number, t: number): number {
-  const ch = (c: number, s: number) => (c >> s) & 0xff;
-  const m = (s: number) => Math.round(ch(a, s) + (ch(b, s) - ch(a, s)) * t) << s;
-  return m(16) | m(8) | m(0);
+  g.poly([px, poleTop, px + 20, poleTop + 5, px, poleTop + 10]).fill(style().castle.banner);
 }
 
 /**

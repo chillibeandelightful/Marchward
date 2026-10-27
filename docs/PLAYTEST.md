@@ -74,6 +74,18 @@ After each milestone, add a section:
 - **Try the milestone question: do thickness and height matter?** Build two castles (or one, then reload) and compare: a Thin wall has 100 HP and a Thick one 280, so raiders break through thin walls much sooner; archers on High walls and towers reach further (shown when you point at a piece) and raider archers below struggle to hit them.
 **Known issues:** raiders only batter (no ladders, sappers or moats yet; those are M6). You can't give orders during a battle (Classic control; Commander mode is M6). Raiders head for the weakest-looking way in by a simple rule, not the smarter weak-point choice planned for M6. Balance numbers are first guesses: a castle left without enough soldiers gets its keep or camp plundered fairly often from the second year. Mouse and keyboard only (PC only, by design).
 
+## M5 – Classic look (2026-10-27)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- **Switch to Classic:** press **L**, or open the **Game** tab and pick **Classic** under Look. The page changes at once: an iron frame round the map, a parchment strip of messages at the bottom with your banner, and a column of icons down the right. Press L again to go back to Modern; your choice is remembered when you reload.
+- **The icons** open the panels over the frame (hover one to see what it is): castle = Building progress, hammer = Workers, logs and stone = buying supplies, helmet = Defence, banner = money and standing, two figures = hiring soldiers, scroll = Plan (the designer), chart = Reports, disk = save, load and the look settings. Click the icon again, or ×, to close the panel. The tool buttons (1–0) stay at the top left of the map as before.
+- **Look at the land and castle:** olive and brown moorland, slate water, dark pines, grey block-built walls with dark outlines, chunkier workers and soldiers. Zoom right out to see the overcast sky and hills behind the site.
+- **Pixels and dithering:** in Game → Look, try Fine, Chunky and Chunkier pixels and Off, Light and Full dithering. Pick what feels closest to how you remember it.
+- **Fighting in Classic:** in Defence, press **Bring the next raid now** twice, then Space. Your soldiers are in red, raiders in dark blue. Watch arrows, oil and steam; when a wall falls there is a burst of dust and smoke from the rubble; if raiders reach the keep or the camp they set it alight, with a column of smoke. (To see the fire quickly, set your garrison to 0 first.)
+- **Check Modern still works** exactly as before (fire and smoke now appear there too).
+- **The questions for this milestone:** does Classic feel like the look you remember? Is switching styles quick, and does everything still read clearly in both?
+**Known issues:** the sky and hills only show when you zoom out far enough to see past the far edge of the site. Raiders battering the back walls are hidden behind them (the view doesn't rotate). Procedural art gets the palette, frame and pixel feel of the mockups but not their painted detail. The banner is a plain gold tower on red until heraldry arrives in a later milestone.
+
 ## Follow-up – Top-down view for placing (2026-10-27)
 **Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
 **How to test:**

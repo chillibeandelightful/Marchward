@@ -4,15 +4,17 @@ import type { BattleState } from '../sim/battle';
 import { footprint, isCurtain, type Piece, type PieceSpec, type PlanView } from '../sim/castle';
 import type { Post } from '../sim/defence';
 import { heightAt, NEIGHBOURS, stepBetween, terrainAt, type TerrainMap } from '../sim/terrain';
-import { GHOST_BAD, GHOST_OK, PLANNED, PROBLEM, STONE, type Palette } from './castleArt';
-import { CONTOUR_COLOUR, GRID_COLOUR, GROUND_COLOUR, HOVER_COLOUR, ROAD_COLOUR, shade } from './terrainStyle';
+import { tinted } from './castleArt';
+import { style, type Palette } from './styles';
+import { shade } from './terrainStyle';
 import { PLAN_TILE as T } from './topDown';
 
 const CLIFF_LINE = 0x1e1a14;
 const RUBBLE = 0x7d6f5a;
 const CAMP = 0x8a6a42;
-const DEFENDER = 0xb3342a;
-const RAIDER = 0x5a5236;
+// Same tints as the isometric castle art uses for problems and placement previews.
+const BAD_TINT = 0xd8452f;
+const GOOD_TINT = 0x8fe08a;
 const CAULDRON = 0xe0802a;
 
 /** What the top-down view draws each frame, besides the land and pieces. */
@@ -50,16 +52,17 @@ export class TopDownView {
   /** Redraw the land. */
   setLand(map: TerrainMap): void {
     const g = this.land.clear();
+    const c = style().terrain;
     for (let y = 0; y < map.height; y++)
       for (let x = 0; x < map.width; x++) {
         const t = terrainAt(map, x, y);
-        const base = t.id === 'road' ? ROAD_COLOUR : GROUND_COLOUR[t.id];
+        const base = t.id === 'road' ? c.road : c.ground[t.id];
         g.rect(x * T, y * T, T, T).fill(t.water ? base : shade(base, 0.78 + heightAt(map, x, y) * 0.07));
       }
     if (this.grid) {
       for (let x = 0; x <= map.width; x++) g.moveTo(x * T, 0).lineTo(x * T, map.height * T);
       for (let y = 0; y <= map.height; y++) g.moveTo(0, y * T).lineTo(map.width * T, y * T);
-      g.stroke({ width: 1, color: GRID_COLOUR, alpha: 0.18 });
+      g.stroke({ width: 1, color: c.grid, alpha: 0.18 });
     }
     // Where heights change: a thin contour for a slope, a heavy line for a cliff.
     for (const cliff of [false, true]) {
@@ -75,13 +78,15 @@ export class TopDownView {
             if (s !== 'flat' && (s === 'cliff') === cliff) g.moveTo(x * T, (y + 1) * T).lineTo((x + 1) * T, (y + 1) * T);
           }
         }
-      g.stroke(cliff ? { width: 3, color: CLIFF_LINE, alpha: 0.85 } : { width: 1, color: CONTOUR_COLOUR, alpha: 0.6 });
+      g.stroke(cliff ? { width: 3, color: CLIFF_LINE, alpha: 0.85 } : { width: 1, color: c.contour, alpha: 0.6 });
     }
   }
 
   /** Redraw the castle pieces: built in stone, planned as a pale model, problems in red. */
   setPieces(view: PlanView, problems: ReadonlySet<number>, progress: (p: Piece) => number, rubble: (p: Piece) => boolean): void {
     const g = this.pieces.clear();
+    const { stone, planned } = style().castle;
+    const problem = tinted(stone, BAD_TINT, 0.45);
     const curtain = new Set(view.plan.pieces.filter((p) => isCurtain(p.kind)).map((p) => `${p.x},${p.y}`));
     this.curtain = curtain;
     for (const p of view.plan.pieces) {
@@ -90,11 +95,11 @@ export class TopDownView {
         continue;
       }
       const done = progress(p);
-      if (problems.has(p.id)) drawPiece(g, view.map, curtain, p, PROBLEM, 1);
-      else if (done >= 1) drawPiece(g, view.map, curtain, p, STONE, 1);
+      if (problems.has(p.id)) drawPiece(g, view.map, curtain, p, problem, 1);
+      else if (done >= 1) drawPiece(g, view.map, curtain, p, stone, 1);
       else {
-        drawPiece(g, view.map, curtain, p, PLANNED, 1);
-        if (done > 0) drawPiece(g, view.map, curtain, p, STONE, done);
+        drawPiece(g, view.map, curtain, p, planned, 1);
+        if (done > 0) drawPiece(g, view.map, curtain, p, stone, done);
       }
     }
   }
@@ -102,16 +107,19 @@ export class TopDownView {
   /** Redraw what changes from frame to frame: hover, previews, troops. */
   setOverlay(o: PlanOverlay, map: TerrainMap): void {
     const g = this.overlay.clear();
+    const { terrain, castle, figures } = style();
     const [cx, cy] = o.camp;
     g.rect((cx - 1) * T, (cy - 1) * T, 3 * T, 3 * T).stroke({ width: 2, color: CAMP, alpha: 0.9 });
 
     if (o.ghosts) {
       const curtain = new Set([...this.curtain, ...o.ghosts.specs.filter((s) => isCurtain(s.kind)).map((s) => `${s.x},${s.y}`)]);
-      o.ghosts.specs.forEach((s, i) => drawPiece(g, map, curtain, s, o.ghosts?.problems[i] ? GHOST_BAD : GHOST_OK, 1, 0.8));
+      const ok = tinted(castle.stone, GOOD_TINT, 0.35);
+      const bad = tinted(castle.stone, BAD_TINT, 0.55);
+      o.ghosts.specs.forEach((s, i) => drawPiece(g, map, curtain, s, o.ghosts?.problems[i] ? bad : ok, 1, 0.8));
     }
 
     if (o.battle) {
-      for (const u of o.battle.units) drawTroop(g, u.x + u.ox, u.y + u.oy, u.side === 'defender' ? DEFENDER : RAIDER, u.type === 'archer' || u.type === 'raiderArcher');
+      for (const u of o.battle.units) drawTroop(g, u.x + u.ox, u.y + u.oy, u.side === 'defender' ? figures.tabard : figures.raider, u.type === 'archer' || u.type === 'raiderArcher');
     } else {
       // Several soldiers on one tile are spread out so each can be seen.
       const seen = new Map<string, number>();
@@ -121,11 +129,11 @@ export class TopDownView {
         seen.set(key, n + 1);
         const a = n * 2.4;
         const r = n === 0 ? 0 : 0.22;
-        drawTroop(g, p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, DEFENDER, p.type === 'archer');
+        drawTroop(g, p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, figures.tabard, p.type === 'archer');
       }
     }
 
-    if (o.hover) g.rect(o.hover.x * T, o.hover.y * T, T, T).stroke({ width: 2, color: HOVER_COLOUR, alpha: 0.95 });
+    if (o.hover) g.rect(o.hover.x * T, o.hover.y * T, T, T).stroke({ width: 2, color: terrain.hover, alpha: 0.95 });
   }
 }
 
