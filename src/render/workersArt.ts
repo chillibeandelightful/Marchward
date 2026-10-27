@@ -3,24 +3,12 @@ import { WORKER_TYPES, type WorkerType } from '../data/economy';
 import { footprint } from '../sim/castle';
 import { hash2 } from '../sim/noise';
 import type { SimState } from '../sim/state';
+import { flames } from './effectsArt';
 import { isoToScreen } from './iso';
+import { style } from './styles';
 
-/** Tunic colour for each kind of worker, so the trades can be told apart on site. */
-const TUNIC: Record<WorkerType, number> = {
-  labourer: 0x9a8a6a,
-  digger: 0x6b4f2e,
-  carter: 0x3f6b8f,
-  quarryman: 0x7d7d7d,
-  mason: 0xd9d2c0,
-  carpenter: 0x8f5a2a,
-};
-const SKIN = 0xe0b48c;
-const LEGS = 0x3b3127;
+// Tunic colours (one per trade, so they can be told apart on site) and the rest come from the active style.
 const TOOL = 0x4a3a28;
-const CANVAS = 0xe8dcc0;
-const CANVAS_SHADE = 0xbfae8c;
-const STONE_BLOCK = 0xc9c0aa;
-const LOG = 0x8a6438;
 
 /** Figures shown per worker type per job; more than this would just be a crowd. */
 const SHOWN_PER_TYPE = 4;
@@ -123,47 +111,69 @@ function at(host: ActorHost, x: number, y: number): { g: Graphics; sx: number; s
 function drawFigure(host: ActorHost, x: number, y: number, type: WorkerType, t: number, busy: boolean): void {
   const o = at(host, x, y);
   if (!o) return;
-  const { g, sx } = o;
+  const { g } = o;
+  const f = style().figures;
   const speed = type === 'mason' || type === 'carpenter' ? 5 : 3;
   const swing = busy ? Math.sin(t * speed) : 0;
   const bend = busy && (type === 'digger' || type === 'labourer') ? Math.max(0, swing) * 2 : 0;
-  const sy = o.sy;
-  g.ellipse(sx, sy, 3.5, 1.5).fill({ color: 0x000000, alpha: 0.25 });
-  if (busy) g.moveTo(sx - 1.2, sy).lineTo(sx - 1.2, sy - 4).moveTo(sx + 1.2, sy).lineTo(sx + 1.2, sy - 4).stroke({ width: 1.3, color: LEGS });
-  else g.rect(sx - 2.5, sy - 2, 5, 2).fill(LEGS); // sitting
-  const top = busy ? sy - 10 + bend : sy - 7;
-  g.rect(sx - 2.2, top, 4.4, busy ? 6.5 : 5.5).fill(TUNIC[type]);
-  g.circle(sx + bend * 0.4, top - 2, 1.8).fill(SKIN);
-  if (!busy) return;
-  // The tool: a hammer or mallet for the trades, a spade for diggers and labourers.
-  const hx = sx + 2;
-  const hy = top + 1.5;
-  const ang = -0.6 + swing * 0.9;
-  const len = type === 'digger' || type === 'labourer' ? 7 : 5;
-  const ex = hx + Math.cos(ang) * len;
-  const ey = hy + Math.sin(ang) * len;
-  g.moveTo(hx, hy).lineTo(ex, ey).stroke({ width: 1, color: TOOL });
-  if (type === 'digger' || type === 'labourer') g.rect(ex - 1, ey - 1, 2.2, 2.2).fill(0x8c8c8c);
-  else g.rect(ex - 1.3, ey - 1.3, 2.6, 2).fill(type === 'mason' ? 0x9a9a9a : TOOL);
+  // Drawn round (0, 0) at the feet, scaled up for chunkier figures.
+  g.setTransform(f.scale, 0, 0, f.scale, o.sx, o.sy);
+  g.ellipse(0, 0, 3.5, 1.5).fill({ color: 0x000000, alpha: 0.25 });
+  const top = busy ? -10 + bend : -7;
+  const height = busy ? 6.5 : 5.5;
+  if (f.outline !== null) {
+    if (busy) g.moveTo(-1.2, 0).lineTo(-1.2, -4).moveTo(1.2, 0).lineTo(1.2, -4).stroke({ width: 2.6, color: f.outline });
+    else g.rect(-3.2, -2.7, 6.4, 3.4).fill(f.outline);
+    g.rect(-2.9, top - 0.7, 5.8, height + 1.4).fill(f.outline);
+    g.circle(bend * 0.4, top - 2, 2.5).fill(f.outline);
+  }
+  if (busy) g.moveTo(-1.2, 0).lineTo(-1.2, -4).moveTo(1.2, 0).lineTo(1.2, -4).stroke({ width: 1.3, color: f.legs });
+  else g.rect(-2.5, -2, 5, 2).fill(f.legs); // sitting
+  g.rect(-2.2, top, 4.4, height).fill(f.tunic[type]);
+  g.circle(bend * 0.4, top - 2, 1.8).fill(f.skin);
+  if (busy) {
+    // The tool: a hammer or mallet for the trades, a spade for diggers and labourers.
+    const hx = 2;
+    const hy = top + 1.5;
+    const ang = -0.6 + swing * 0.9;
+    const len = type === 'digger' || type === 'labourer' ? 7 : 5;
+    const ex = hx + Math.cos(ang) * len;
+    const ey = hy + Math.sin(ang) * len;
+    g.moveTo(hx, hy).lineTo(ex, ey).stroke({ width: 1, color: TOOL });
+    if (type === 'digger' || type === 'labourer') g.rect(ex - 1, ey - 1, 2.2, 2.2).fill(0x8c8c8c);
+    else g.rect(ex - 1.3, ey - 1.3, 2.6, 2).fill(type === 'mason' ? 0x9a9a9a : TOOL);
+  }
+  g.setTransform(1, 0, 0, 1, 0, 0);
 }
 
 /** A carter with a hand-cart, loaded on the way out to the job. */
 function drawCarter(host: ActorHost, x: number, y: number, t: number, loaded: boolean): void {
   const o = at(host, x, y);
   if (!o) return;
-  const { g, sx, sy } = o;
+  const { g } = o;
+  const f = style().figures;
   const step = Math.sin(t * 8) * 1.2;
-  g.ellipse(sx + 4, sy, 7, 2.2).fill({ color: 0x000000, alpha: 0.22 });
-  g.rect(sx + 2, sy - 6, 9, 4).fill(0x6e5232);
-  g.circle(sx + 6.5, sy - 1.5, 2).fill(0x3a2e22);
-  if (loaded) g.rect(sx + 3, sy - 9, 7, 3).fill(STONE_BLOCK).stroke({ width: 0.5, color: 0x6b6250 });
-  g.moveTo(sx - 1, sy).lineTo(sx - 1 + step, sy - 4).moveTo(sx + 1, sy).lineTo(sx + 1 - step, sy - 4).stroke({ width: 1.3, color: LEGS });
-  g.rect(sx - 2.2, sy - 10, 4.4, 6.5).fill(TUNIC.carter);
-  g.circle(sx, sy - 12, 1.8).fill(SKIN);
+  g.setTransform(f.scale, 0, 0, f.scale, o.sx, o.sy);
+  g.ellipse(4, 0, 7, 2.2).fill({ color: 0x000000, alpha: 0.22 });
+  const ink = f.outline !== null ? { width: 1, color: f.outline } : null;
+  const cart = g.rect(2, -6, 9, 4).fill(0x6e5232);
+  if (ink) cart.stroke(ink);
+  g.circle(6.5, -1.5, 2).fill(0x3a2e22);
+  if (loaded) g.rect(3, -9, 7, 3).fill(f.stoneBlock).stroke(ink ?? { width: 0.5, color: 0x6b6250 });
+  if (f.outline !== null) {
+    g.moveTo(-1, 0).lineTo(-1 + step, -4).moveTo(1, 0).lineTo(1 - step, -4).stroke({ width: 2.6, color: f.outline });
+    g.rect(-2.9, -10.7, 5.8, 7.9).fill(f.outline);
+    g.circle(0, -12, 2.5).fill(f.outline);
+  }
+  g.moveTo(-1, 0).lineTo(-1 + step, -4).moveTo(1, 0).lineTo(1 - step, -4).stroke({ width: 1.3, color: f.legs });
+  g.rect(-2.2, -10, 4.4, 6.5).fill(f.tunic.carter);
+  g.circle(0, -12, 1.8).fill(f.skin);
+  g.setTransform(1, 0, 0, 1, 0, 0);
 }
 
 /** Tents, a fire, and piles of stone and timber that grow and shrink with the stores. */
 function drawCamp(host: ActorHost, sim: SimState, cx: number, cy: number, t: number): void {
+  const f = style().figures;
   for (const [dx, dy] of [
     [-0.6, -0.6],
     [0.6, -0.7],
@@ -172,15 +182,16 @@ function drawCamp(host: ActorHost, sim: SimState, cx: number, cy: number, t: num
     const o = at(host, cx + dx, cy + dy);
     if (!o) continue;
     const { g, sx, sy } = o;
-    g.poly([sx - 20, sy, sx, sy - 26, sx + 3, sy + 7]).fill(CANVAS);
-    g.poly([sx + 3, sy + 7, sx, sy - 26, sx + 20, sy]).fill(CANVAS_SHADE);
+    g.poly([sx - 20, sy, sx, sy - 26, sx + 3, sy + 7]).fill(f.canvas);
+    g.poly([sx + 3, sy + 7, sx, sy - 26, sx + 20, sy]).fill(f.canvasShade);
     g.poly([sx - 3, sy + 4, sx, sy - 11, sx + 3, sy + 4]).fill(0x3a2e22);
+    if (f.outline !== null) g.poly([sx - 20, sy, sx, sy - 26, sx + 20, sy, sx + 3, sy + 7]).stroke({ width: 1.2, color: f.outline, join: 'round' });
   }
   const fire = at(host, cx + 0.15, cy + 1.2);
   if (fire) {
     const { g, sx, sy } = fire;
     g.ellipse(sx, sy, 4, 2).fill(0x3a2e22);
-    g.poly([sx - 2.5, sy, sx, sy - 6 - Math.abs(Math.sin(t * 9)) * 2, sx + 2.5, sy]).fill(0xf2a03a);
+    flames(g, sx, sy, t, 5, 0);
   }
   // Stone blocks, up to five rows high.
   const stones = Math.min(30, Math.ceil(sim.economy.stores.stone / 40));
@@ -191,7 +202,7 @@ function drawCamp(host: ActorHost, sim: SimState, cx: number, cy: number, t: num
       const col = i % 6;
       const bx = s.sx - 18 + col * 6 + row * 3;
       const by = s.sy - row * 4;
-      s.g.rect(bx, by - 4, 6, 4).fill(STONE_BLOCK).stroke({ width: 0.6, color: 0x6b6250 });
+      s.g.rect(bx, by - 4, 6, 4).fill(f.stoneBlock).stroke({ width: 0.6, color: f.outline ?? 0x6b6250 });
     }
   const logs = Math.min(12, Math.ceil(sim.economy.stores.timber / 25));
   const l = at(host, cx + 0.5, cy + 0.9);
@@ -200,6 +211,6 @@ function drawCamp(host: ActorHost, sim: SimState, cx: number, cy: number, t: num
       const row = Math.floor(i / 4);
       const lx = l.sx + 8 + (i % 4) * 4.4 + row * 2.2;
       const ly = l.sy - row * 4;
-      l.g.circle(lx, ly - 2, 2.2).fill(LOG).stroke({ width: 0.5, color: 0x5a4024 });
+      l.g.circle(lx, ly - 2, 2.2).fill(f.log).stroke({ width: 0.5, color: f.outline ?? 0x5a4024 });
     }
 }

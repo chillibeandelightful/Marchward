@@ -1,3 +1,4 @@
+import '@fontsource/pixelify-sans/400.css';
 import { Application, Container, Graphics } from 'pixi.js';
 import { CALENDAR } from './data/economy';
 import { simConfig } from './data/config';
@@ -14,6 +15,12 @@ import { DefencePanel } from './ui/defencePanel';
 import { ReportView } from './ui/reportView';
 import { pieceProgress, summariseWorks, type WorksSummary } from './sim/works';
 import { ProceduralAssets } from './render/assets';
+import { Backdrop } from './render/backdrop';
+import { ScreenEffect } from './render/screenEffect';
+import { setStyle, style } from './render/styles';
+import { buildPalette } from './render/styles/palette';
+import { ClassicFrame } from './ui/classicFrame';
+import { loadLook, storeLook, type Look } from './ui/look';
 import { Camera } from './render/camera';
 import { CastleArt, pickPiece } from './render/castleArt';
 import { isoToScreen } from './render/iso';
@@ -45,8 +52,13 @@ async function start(): Promise<void> {
   const reportEl = document.getElementById('report');
   if (!host || !topEl || !readoutEl || !toolsEl || !panelEl || !reportEl) throw new Error('Missing page elements');
 
+  // The look is chosen before anything is drawn, so the land is built once in the right style.
+  let look: Look = loadLook();
+  setStyle(look.style);
+  document.body.classList.toggle('classic', style().ui === 'classic');
+
   const app = new Application();
-  await app.init({ resizeTo: host, background: 0x1b1f24, antialias: true });
+  await app.init({ resizeTo: host, background: style().background, antialias: true, preference: 'webgl' });
   host.appendChild(app.canvas);
 
   // ?seed=123 in the URL reproduces a specific run.
@@ -98,9 +110,14 @@ async function start(): Promise<void> {
   art.setRubble((p) => (sim.defence.battle?.pieces[p.id]?.breachedAt ?? null) !== null);
   const terrain = new TerrainView(shownMap(), shapes, new ProceduralAssets(app.renderer), art);
   const ghosts = new Graphics();
+  // Smoke rises over everything on the land, so it is drawn above all the rows.
+  const sky = new Graphics();
   const world = new Container();
-  world.addChild(terrain.root, ghosts);
-  app.stage.addChild(world);
+  world.addChild(terrain.root, sky, ghosts);
+  const backdrop = new Backdrop();
+  const scene = new Container();
+  scene.addChild(backdrop.root, world);
+  const effect = new ScreenEffect(app.renderer, app.stage, scene);
 
   /** Something changed: rebuild the plan snapshot and redraw what's needed. `land` lists tiles whose drawn height may have changed. */
   const refresh = (land: readonly Tile[] | 'all') => {
@@ -205,7 +222,45 @@ async function start(): Promise<void> {
   const workersPanel = new WorkersPanel(tabs.pages.workers, game);
   const worksPanel = new WorksPanel(tabs.pages.works, game);
   const reportsPanel = new ReportsPanel(tabs.pages.reports, game);
-  const gamePanel = new GamePanel(tabs.pages.game, game);
+  const gamePanel = new GamePanel(tabs.pages.game, game, {
+    get look() {
+      return look;
+    },
+    setLook: (l) => applyLook(l),
+  });
+  const frame = new ClassicFrame(tabs, panelEl);
+  const palettes = new Map<string, number[]>();
+  /** The limited palette for the active style's screen effect, worked out once per style. */
+  const palette = () => {
+    const s = style();
+    let p = palettes.get(s.id);
+    if (!p) {
+      p = s.retro ? buildPalette(s) : [];
+      palettes.set(s.id, p);
+    }
+    return p;
+  };
+
+  /** Switch style or effect strength: everything is redrawn in the new look at once, without reloading. */
+  function applyLook(next: Look): void {
+    const restyled = next.style !== look.style;
+    look = next;
+    storeLook(look);
+    setStyle(look.style);
+    const s = style();
+    document.body.classList.toggle('classic', s.ui === 'classic');
+    app.renderer.background.color = s.background;
+    effect.configure(s.retro, look.pixel, look.dither, palette());
+    gamePanel.showLook();
+    if (!restyled) return;
+    frame.relayout();
+    if (s.ui !== 'classic') toolsEl?.style.removeProperty('top');
+    app.resize();
+    refresh('all');
+    ghostKey = '';
+    terrain.setHover(hovered);
+  }
+
   const reportView = new ReportView(reportEl);
   const defencePanel = new DefencePanel(tabs.pages.defence, game, {
     postTroops: () => designer.setTool('troops'),
@@ -235,6 +290,14 @@ async function start(): Promise<void> {
     return lines;
   }
 
+  // Lay out the Classic frame now, so the view fits the map area it leaves.
+  if (style().ui === 'classic') {
+    topBar.update();
+    frame.update(sim, topEl.getBoundingClientRect().bottom);
+    app.resize();
+  }
+  effect.configure(style().retro, look.pixel, look.dither, palette());
+
   const minX = Math.min(...shapes.map((s) => s.minX));
   const minY = Math.min(...shapes.map((s) => s.minY));
   const maxX = Math.max(...shapes.map((s) => s.maxX));
@@ -256,7 +319,9 @@ async function start(): Promise<void> {
   });
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyV') forcePlanned = !forcePlanned;
+    if (e.code === 'KeyL') applyLook({ ...look, style: look.style === 'classic' ? 'modern' : 'classic' });
   });
+  window.addEventListener('resize', () => frame.relayout());
   const hud = new Hud(readoutEl);
 
   let hovered: TileShape | null = null;
@@ -400,15 +465,21 @@ async function start(): Promise<void> {
     }
 
     terrain.clearActors();
+    sky.clear();
     const actors = { layer: (d: number) => terrain.actorsFor(d), ground, route };
     drawWorkers(actors, sim, performance.now());
-    drawBattle(actors, sim, loop.alpha, performance.now());
+    drawBattle(actors, sim, loop.alpha, performance.now(), sky);
 
     hud.update(sim, view.map, hovered, designer.hoverLines());
     topBar.update();
-    // Keep the tools clear of the top bar, which grows a line when raiders are about.
-    const toolsTop = `${Math.round(topEl.getBoundingClientRect().bottom + 8)}px`;
-    if (toolsEl.style.top !== toolsTop) toolsEl.style.top = toolsTop;
+    if (style().ui === 'classic') {
+      // The frame sits under the top bar; the tools are placed by the page's CSS inside the map.
+      if (frame.update(sim, topEl.getBoundingClientRect().bottom)) app.resize();
+    } else {
+      // Keep the tools clear of the top bar, which grows a line when raiders are about.
+      const toolsTop = `${Math.round(topEl.getBoundingClientRect().bottom + 8)}px`;
+      if (toolsEl.style.top !== toolsTop) toolsEl.style.top = toolsTop;
+    }
     switch (tabs.active) {
       case 'plan':
         designer.updatePanel();
@@ -426,6 +497,12 @@ async function start(): Promise<void> {
         reportsPanel.update();
         break;
     }
+
+    // The land beyond the map: its horizon sits a little below the site's far corner, so hills show
+    // behind its back edges, and they drift as the view pans.
+    const far = camera.worldToScreen(isoToScreen(0, 0, 0).sx, minY, w, h);
+    backdrop.update(w, h, far.y + (maxY - minY) * camera.zoom * 0.18, camera.x * camera.zoom * 0.2);
+    effect.render(w, h);
   });
 }
 
