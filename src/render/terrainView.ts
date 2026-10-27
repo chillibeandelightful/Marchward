@@ -4,19 +4,8 @@ import { heightAt, inBounds, stepBetween, terrainAt, type TerrainMap } from '../
 import type { SpriteAssets, SpriteName } from './assets';
 import { isoToScreen } from './iso';
 import { surfaceLevel, type Face, type Pt, type TileShape } from './tileGeometry';
-import {
-  CONTOUR_COLOUR,
-  FACE_COLOUR,
-  FORD_STONE_COLOUR,
-  GRID_COLOUR,
-  GROUND_COLOUR,
-  HOVER_COLOUR,
-  PUDDLE_COLOUR,
-  RIPPLE_COLOUR,
-  ROAD_COLOUR,
-  STRATA_COLOUR,
-  shade,
-} from './terrainStyle';
+import { style } from './styles';
+import { shade } from './terrainStyle';
 
 interface Decor {
   name: SpriteName;
@@ -121,7 +110,8 @@ export class TerrainView {
   setHover(shape: TileShape | null): void {
     const g = this.hover.clear();
     if (!shape) return;
-    g.poly(flat(shape.top)).fill({ color: HOVER_COLOUR, alpha: 0.18 }).stroke({ width: 2, color: HOVER_COLOUR });
+    const colour = style().terrain.hover;
+    g.poly(flat(shape.top)).fill({ color: colour, alpha: 0.18 }).stroke({ width: 2, color: colour });
   }
 
   private build(): void {
@@ -149,6 +139,7 @@ export class TerrainView {
 
   private drawTile(g: Graphics, sprites: Container, s: TileShape): void {
     const terrain = terrainAt(this.map, s.x, s.y);
+    const pal = style().terrain;
     for (const f of s.faces) this.drawFace(g, f);
 
     // Light comes from the upper left of the screen (the -x side), so slopes rising
@@ -156,9 +147,10 @@ export class TerrainView {
     const c = s.corners;
     const gx = (c.e + c.s - c.n - c.w) / 2;
     const gy = (c.s + c.w - c.n - c.e) / 2;
-    const light = 1 + 0.4 * gx - 0.18 * gy + 0.05 * (s.level - 2) + (hash2(s.x, s.y, 7) - 0.5) * 0.03;
-    g.poly(flat(s.top)).fill(shade(GROUND_COLOUR[terrain.id], light));
-    if (this.grid) g.poly(flat(s.top)).stroke({ width: 1, color: GRID_COLOUR, alpha: 0.35 });
+    const light = 1 + 0.4 * gx - 0.18 * gy + 0.05 * (s.level - 2) + (hash2(s.x, s.y, 7) - 0.5) * pal.grain;
+    g.poly(flat(s.top)).fill(shade(pal.ground[terrain.id], light));
+    if (pal.speckle && !terrain.water) this.drawSpeckle(g, s, pal.speckle, light);
+    if (this.grid) g.poly(flat(s.top)).stroke({ width: 1, color: pal.grid, alpha: 0.35 });
     this.drawContours(g, s, terrain.water);
 
     switch (terrain.id) {
@@ -169,7 +161,7 @@ export class TerrainView {
         for (let i = 0; i < 2; i++) {
           if (hash2(s.x, s.y, 20 + i) < 0.35) continue;
           const p = this.point(s, (hash2(s.x, s.y, 30 + i) - 0.5) * 0.5, (hash2(s.x, s.y, 40 + i) - 0.5) * 0.5);
-          g.ellipse(p.x, p.y, 7, 3).fill({ color: PUDDLE_COLOUR, alpha: 0.85 });
+          g.ellipse(p.x, p.y, 7, 3).fill({ color: pal.puddle, alpha: 0.85 });
         }
         break;
       case 'ford':
@@ -183,7 +175,7 @@ export class TerrainView {
           const p = this.point(s, (hash2(s.x, s.y, 60 + i) - 0.5) * 0.6, (hash2(s.x, s.y, 70 + i) - 0.5) * 0.6);
           g.moveTo(p.x - 6, p.y)
             .quadraticCurveTo(p.x, p.y - 2, p.x + 6, p.y)
-            .stroke({ width: 1.2, color: RIPPLE_COLOUR, alpha: terrain.id === 'shallow' ? 0.55 : 0.3 });
+            .stroke({ width: 1.2, color: pal.ripple, alpha: terrain.id === 'shallow' ? 0.55 : 0.3 });
         }
         break;
       }
@@ -217,12 +209,24 @@ export class TerrainView {
       const ny = s.y + dy;
       if (!inBounds(this.map, nx, ny) || terrainAt(this.map, nx, ny).water) continue;
       if (stepBetween(s.level, heightAt(this.map, nx, ny)) !== 'slope') continue;
-      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 1.5, color: CONTOUR_COLOUR, alpha: 0.35 });
+      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 1.5, color: style().terrain.contour, alpha: 0.35 });
+    }
+  }
+
+  /** A few flecks of darker and lighter ground, placed by a hash so they never move. */
+  private drawSpeckle(g: Graphics, s: TileShape, colours: { dark: number; light: number }, light: number): void {
+    for (let i = 0; i < 5; i++) {
+      if (hash2(s.x, s.y, 200 + i) < 0.3) continue;
+      const p = this.point(s, (hash2(s.x, s.y, 210 + i) - 0.5) * 0.8, (hash2(s.x, s.y, 220 + i) - 0.5) * 0.8);
+      const dark = hash2(s.x, s.y, 230 + i) < 0.6;
+      const w = 2 + hash2(s.x, s.y, 240 + i) * 3;
+      g.rect(p.x - w / 2, p.y - 1, w, 2).fill(shade(dark ? colours.dark : colours.light, light));
     }
   }
 
   private drawFace(g: Graphics, f: Face): void {
-    const base = FACE_COLOUR[f.kind];
+    const pal = style().terrain;
+    const base = pal.face[f.kind];
     g.poly(flat(f.points)).fill(shade(base, f.side === 'left' ? 1 : 0.78));
     if (f.kind !== 'cliff') return;
     // Rock strata at each whole level, so the height of a cliff can be counted.
@@ -232,7 +236,7 @@ export class TerrainView {
       if (lv <= Math.max(bottomA, bottomB)) continue;
       g.moveTo(a.x, a.y + (topA - lv) * LEVEL_PX)
         .lineTo(b.x, b.y + (topB - lv) * LEVEL_PX)
-        .stroke({ width: 1, color: STRATA_COLOUR, alpha: 0.8 });
+        .stroke({ width: 1, color: pal.strata, alpha: 0.8 });
     }
   }
 
@@ -252,12 +256,12 @@ export class TerrainView {
       for (const [dx, dy] of links)
         for (const t of [0.1, 0.32]) {
           const p = this.point(s, dx * t, dy * t);
-          g.ellipse(p.x, p.y, 4, 2).fill(FORD_STONE_COLOUR).stroke({ width: 0.8, color: 0x5a5244, alpha: 0.7 });
+          g.ellipse(p.x, p.y, 4, 2).fill(style().terrain.fordStone).stroke({ width: 0.8, color: 0x5a5244, alpha: 0.7 });
         }
       return;
     }
 
-    const stroke = { width: 10, color: ROAD_COLOUR, cap: 'round', join: 'round' } as const;
+    const stroke = { width: 10, color: style().terrain.road, cap: 'round', join: 'round' } as const;
     const [a, b] = ends;
     const [la, lb] = links;
     const bend = links.length === 2 && la && lb && (la[0] !== -lb[0] || la[1] !== -lb[1]);
@@ -265,7 +269,7 @@ export class TerrainView {
       // A corner: one curve instead of two straight legs, so the road doesn't zigzag.
       g.moveTo(a.x, a.y).quadraticCurveTo(centre.x, centre.y, b.x, b.y).stroke(stroke);
     } else if (ends.length === 0) {
-      g.circle(centre.x, centre.y, 5).fill(ROAD_COLOUR);
+      g.circle(centre.x, centre.y, 5).fill(stroke.color);
     } else {
       for (const e of ends) g.moveTo(centre.x, centre.y).lineTo(e.x, e.y).stroke(stroke);
     }
