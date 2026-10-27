@@ -69,6 +69,8 @@ export interface PieceCombat {
   /** Seconds into the battle it fell, and how many of your archers could reach its foot then. */
   breachedAt: number | null;
   coveredBy: number;
+  /** Seconds into the battle the raiders first struck it (missing in saves from before it was kept). */
+  batterFrom?: number | null;
 }
 
 /** An arrow in flight. Whether it hits is decided as it is loosed; the damage lands when it arrives. */
@@ -293,6 +295,7 @@ function combatPieces(s: SimState): Record<string, PieceCombat> {
       oilWait: 0,
       batterTaken: batterTaken(p),
       breachedAt: null,
+      batterFrom: null,
       coveredBy: 0,
     };
   }
@@ -450,6 +453,11 @@ export function redeploy(s: SimState): boolean {
   b.stats.manned = [...new Set(b.units.filter((u) => u.on).map((u) => u.on))];
   s.rngState = rng.getState();
   return true;
+}
+
+/** How long a breached piece stood up to battering, from the first blow to its fall. */
+function batteredFor(p: PieceCombat): number {
+  return Math.round((p.breachedAt ?? 0) - (p.batterFrom ?? 0));
 }
 
 function tileDist(map: TerrainMap, i: number, x: number, y: number): number {
@@ -892,6 +900,7 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
       if (at > COMBAT.batterersPerPiece) return;
       batterers.set(p.id, at);
       u.act = 'batter';
+      p.batterFrom ??= seconds;
       p.hp -= UNITS[u.type].batter * DT * p.batterTaken;
       if (p.hp <= 0) {
         breach(p);
@@ -1065,7 +1074,7 @@ function buildReport(s: SimState, b: BattleState, day: number, outcome: Outcome,
 
   const walls: ReportLine[] = [];
   for (const p of breached) {
-    walls.push({ text: `Breached: ${p.name} at ${p.x}, ${p.y}, after ${Math.round(p.breachedAt as number)} seconds of battering.`, cls: 'bad' });
+    walls.push({ text: `Breached: ${p.name} at ${p.x}, ${p.y}, after ${batteredFor(p)} seconds of battering.`, cls: 'bad' });
     walls.push({ text: breachWhy(s, p), cls: 'dim' });
   }
   if (st.gaps.length > 0) {
@@ -1123,7 +1132,7 @@ function buildReport(s: SimState, b: BattleState, day: number, outcome: Outcome,
     headline,
     attackers: { came, killed },
     defenders: { fought, lost: lostTroops },
-    breaches: breached.map((p) => ({ id: p.id, name: p.name, x: p.x, y: p.y, seconds: Math.round(p.breachedAt as number) })),
+    breaches: breached.map((p) => ({ id: p.id, name: p.name, x: p.x, y: p.y, seconds: batteredFor(p) })),
     gaps: st.gaps.length,
     plunder: st.plundered,
     repairs,
