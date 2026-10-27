@@ -33,7 +33,7 @@ export const CLASSIC: VisualStyle = {
   },
   castle: {
     stone: { top: 0xa3a098, face: 0x8b8880, dark: 0x24221f },
-    planned: { top: 0xb6c0c8, face: 0x8592a0, dark: 0x2c3540 },
+    planned: { top: 0xdcd2b6, face: 0xb0a58a, dark: 0x241e16 },
     banner: 0xa3271f,
     scaffold: 0x7a5a32,
     masonry: 'blocks',

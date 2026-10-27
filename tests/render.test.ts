@@ -4,6 +4,9 @@ import { Camera } from '../src/render/camera';
 import { frontDiagonal, pickPiece } from '../src/render/castleArt';
 import { isoToScreen } from '../src/render/iso';
 import { buildTileShapes, pickTile, tileCorners } from '../src/render/tileGeometry';
+import { KEEP, WALL_THICKNESS } from '../src/data/castle';
+import { foundationOutline, TOWER_HALF } from '../src/render/foundation';
+import { isoToTile, pickPlanTile, PLAN_TILE, planToTile, tileToIso, tileToPlan, wantsTopDown } from '../src/render/topDown';
 import { createPlan, placePieces, viewPlan } from '../src/sim/castle';
 import { buildSite } from '../src/sim/site';
 import { heightAt, inBounds, type TerrainMap } from '../src/sim/terrain';
@@ -137,5 +140,78 @@ describe('castle pieces on screen', () => {
     // Pointing at open ground well away from it picks nothing.
     const q = isoToScreen(1, 1, 1);
     expect(pickPiece(view, q.sx, q.sy, 2)).toBeNull();
+  });
+});
+
+describe('top-down plan view', () => {
+  it('is used only while placing pieces, and while posting troops before the fight', () => {
+    for (const tool of ['wall', 'tower', 'gatehouse', 'keep']) {
+      expect(wantsTopDown(tool, null)).toBe(true);
+      expect(wantsTopDown(tool, 'deploy')).toBe(false);
+      expect(wantsTopDown(tool, 'fight')).toBe(false);
+    }
+    expect(wantsTopDown('troops', null)).toBe(true);
+    expect(wantsTopDown('troops', 'deploy')).toBe(true);
+    expect(wantsTopDown('troops', 'fight')).toBe(false);
+    for (const tool of ['look', 'raise', 'lower', 'remove', 'extras']) expect(wantsTopDown(tool, null)).toBe(false);
+  });
+
+  it('converts between isometric and plan coordinates without drift', () => {
+    for (const [x, y] of [
+      [0, 0],
+      [12.25, 40.5],
+      [63, 1],
+    ] as const) {
+      const iso = tileToIso(x, y);
+      expect(iso).toEqual({ x: isoToScreen(x, y).sx, y: isoToScreen(x, y).sy });
+      const t = isoToTile(iso.x, iso.y);
+      expect(t.x).toBeCloseTo(x);
+      expect(t.y).toBeCloseTo(y);
+      const plan = tileToPlan(x, y);
+      expect(planToTile(plan.x, plan.y)).toEqual({ x, y });
+    }
+  });
+
+  it('picks the tile under the pointer, and nothing off the map', () => {
+    expect(pickPlanTile(10, 8, PLAN_TILE * 3.5, PLAN_TILE * 7.99)).toEqual({ x: 3, y: 7 });
+    expect(pickPlanTile(10, 8, tileToPlan(4, 2).x, tileToPlan(4, 2).y)).toEqual({ x: 4, y: 2 });
+    expect(pickPlanTile(10, 8, -1, 5)).toBeNull();
+    expect(pickPlanTile(10, 8, PLAN_TILE * 10, 5)).toBeNull();
+  });
+});
+
+describe('planned foundation outlines', () => {
+  const wall = { kind: 'wall', x: 5, y: 5, thickness: 'standard', height: 'medium' } as const;
+  const hw = WALL_THICKNESS.standard.width / 2;
+  // Furthest an outline reaches from the tile centre towards +x.
+  const reachX = (o: ReturnType<typeof foundationOutline>) => Math.max(...o.segments.flatMap(([x0, , x1]) => [x0, x1])) - 5;
+
+  it('marks a lone wall tile as a small closed square', () => {
+    const o = foundationOutline(wall, () => null);
+    expect(o.segments).toHaveLength(4);
+    expect(reachX(o)).toBeCloseTo(hw);
+  });
+
+  it('leaves a run of wall open where it joins the next wall tile, so the footing reads as one', () => {
+    const o = foundationOutline(wall, (x, y) => (x === 6 && y === 5 ? 'wall' : null));
+    expect(reachX(o)).toBeCloseTo(0.5);
+    // Three sides of the core plus the two long sides of the arm; no line across the joint.
+    expect(o.segments).toHaveLength(5);
+    expect(o.segments.some(([x0, , x1]) => x0 === x1 && Math.abs(x0 - 5.5) < 1e-9)).toBe(false);
+  });
+
+  it('stops a wall at the footing of the tower it runs into, and closes it there', () => {
+    const o = foundationOutline(wall, (x, y) => (x === 6 && y === 5 ? 'tower' : null));
+    expect(reachX(o)).toBeCloseTo(1 - TOWER_HALF);
+    expect(o.segments).toHaveLength(6);
+  });
+
+  it('draws towers, gatehouse and keep as their footings', () => {
+    expect(foundationOutline({ kind: 'tower', x: 2, y: 2, shape: 'round', height: 'low' }, () => null).circles).toHaveLength(1);
+    expect(foundationOutline({ kind: 'tower', x: 2, y: 2, shape: 'square', height: 'low' }, () => null).segments).toHaveLength(4);
+    expect(foundationOutline({ kind: 'gatehouse', x: 2, y: 2, axis: 'x' }, () => null).segments).toHaveLength(6);
+    const keep = foundationOutline({ kind: 'keep', x: 2, y: 2 }, () => null);
+    const xs = keep.segments.flatMap(([x0, , x1]) => [x0, x1]);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(KEEP.size - 0.1);
   });
 });

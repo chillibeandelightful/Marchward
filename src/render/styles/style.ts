@@ -31,7 +31,7 @@ export interface TerrainColours {
 
 export interface CastleColours {
   stone: Palette;
-  /** Planned but not yet built: a pale model of the finished piece. */
+  /** Planned but not yet finished: `top` marks out the footings on the ground, over a `dark` shadow. */
   planned: Palette;
   banner: number;
   scaffold: number;

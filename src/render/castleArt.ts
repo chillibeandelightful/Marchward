@@ -5,6 +5,7 @@ import {
   hasSlits,
   isCurtain,
   linked,
+  pieceAt,
   pieceLevels,
   type Piece,
   type PieceSpec,
@@ -16,7 +17,8 @@ import { isoToScreen, TILE_H, TILE_W } from './iso';
 import { style, type Palette } from './styles';
 import { mix, shade } from './terrainStyle';
 import type { RowExtras } from './terrainView';
-import { tileCorners, type TileShape } from './tileGeometry';
+import { foundationOutline, type Joined } from './foundation';
+import { surfaceLevel, tileCorners, type TileShape } from './tileGeometry';
 
 const BAD_TINT = 0xd8452f;
 const GOOD_TINT = 0x8fe08a;
@@ -90,11 +92,11 @@ export class CastleArt implements RowExtras {
       if (frontDiagonal(p) !== diagonal) continue;
       const done = this.progress(p);
       if (this.rubble(p)) this.drawRubble(g, p);
-      else if (this.problems.has(p.id)) this.drawPiece(g, p, problem());
-      else if (done >= 1) this.drawPiece(g, p, stone());
+      else if (done >= 1) this.drawPiece(g, p, this.problems.has(p.id) ? problem() : stone());
       else {
-        // The plan as a pale model, with the built part in stone and scaffolding over it.
-        this.drawPiece(g, p, planned());
+        // Only the footings are marked out on the ground until it's finished, like a builder's
+        // lines: where it goes, not what it will look like. The built part rises in stone inside.
+        this.drawFoundation(g, p, this.problems.has(p.id) ? BAD_TINT : planned().top);
         if (done > 0) {
           this.drawPiece(g, p, stone(), done);
           this.drawScaffold(g, p, done);
@@ -265,6 +267,44 @@ export class CastleArt implements RowExtras {
     });
     if (arms.length === 0) merlons.push(...ringMerlons(boxes[0] as Box));
     drawMerlons(g, merlons, pal);
+  }
+
+  /** The outline of a planned piece's footings, drawn on the ground in `colour` over a faint shadow. */
+  private drawFoundation(g: Graphics, p: Piece, colour: number): void {
+    const joined = (nx: number, ny: number): Joined => {
+      if (!this.linksTo(p, nx, ny)) return null;
+      const o = pieceAt(this.view, nx, ny);
+      if (!o || o.kind === 'keep') return null;
+      return o.kind === 'tower' && o.shape === 'round' ? 'round-tower' : o.kind;
+    };
+    const { segments, circles } = foundationOutline(p, joined);
+    const lines: number[][] = segments.map(([x0, y0, x1, y1]) => {
+      // Split each edge so the line follows slopes rather than cutting through them.
+      const out: number[] = [];
+      for (let i = 0; i <= 4; i++) out.push(...this.onGround(x0 + ((x1 - x0) * i) / 4, y0 + ((y1 - y0) * i) / 4));
+      return out;
+    });
+    for (const c of circles) {
+      const out: number[] = [];
+      for (let i = 0; i <= 24; i++) {
+        const a = (i / 24) * Math.PI * 2;
+        out.push(...this.onGround(c.x + Math.cos(a) * c.r, c.y + Math.sin(a) * c.r));
+      }
+      lines.push(out);
+    }
+    for (const l of lines) g.poly(l, false);
+    g.stroke({ width: 3.5, color: planned().dark, alpha: 0.35, cap: 'round', join: 'round' });
+    for (const l of lines) g.poly(l, false);
+    g.stroke({ width: 1.6, color: colour, alpha: 0.95, cap: 'round', join: 'round' });
+  }
+
+  /** Screen point on the drawn ground at fractional tile coordinates, a hair above it. */
+  private onGround(fx: number, fy: number): number[] {
+    const tx = Math.round(fx);
+    const ty = Math.round(fy);
+    const s = this.shapeAt(tx, ty);
+    const level = s ? surfaceLevel(s.corners, fx - tx, fy - ty) : heightAt(this.view.map, tx, ty);
+    return pt(fx, fy, level + 0.02);
   }
 
   /** Pieces in a preview link to the plan's curtain, and to each other, as if already placed. */
