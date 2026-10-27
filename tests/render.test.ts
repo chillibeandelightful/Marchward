@@ -4,6 +4,7 @@ import { Camera } from '../src/render/camera';
 import { frontDiagonal, pickPiece } from '../src/render/castleArt';
 import { isoToScreen } from '../src/render/iso';
 import { buildTileShapes, pickTile, tileCorners } from '../src/render/tileGeometry';
+import { isoToTile, pickPlanTile, PLAN_TILE, planToTile, tileToIso, tileToPlan, wantsTopDown } from '../src/render/topDown';
 import { createPlan, placePieces, viewPlan } from '../src/sim/castle';
 import { buildSite } from '../src/sim/site';
 import { heightAt, inBounds, type TerrainMap } from '../src/sim/terrain';
@@ -137,5 +138,42 @@ describe('castle pieces on screen', () => {
     // Pointing at open ground well away from it picks nothing.
     const q = isoToScreen(1, 1, 1);
     expect(pickPiece(view, q.sx, q.sy, 2)).toBeNull();
+  });
+});
+
+describe('top-down plan view', () => {
+  it('is used only while placing pieces, and while posting troops before the fight', () => {
+    for (const tool of ['wall', 'tower', 'gatehouse', 'keep']) {
+      expect(wantsTopDown(tool, null)).toBe(true);
+      expect(wantsTopDown(tool, 'deploy')).toBe(false);
+      expect(wantsTopDown(tool, 'fight')).toBe(false);
+    }
+    expect(wantsTopDown('troops', null)).toBe(true);
+    expect(wantsTopDown('troops', 'deploy')).toBe(true);
+    expect(wantsTopDown('troops', 'fight')).toBe(false);
+    for (const tool of ['look', 'raise', 'lower', 'remove', 'extras']) expect(wantsTopDown(tool, null)).toBe(false);
+  });
+
+  it('converts between isometric and plan coordinates without drift', () => {
+    for (const [x, y] of [
+      [0, 0],
+      [12.25, 40.5],
+      [63, 1],
+    ] as const) {
+      const iso = tileToIso(x, y);
+      expect(iso).toEqual({ x: isoToScreen(x, y).sx, y: isoToScreen(x, y).sy });
+      const t = isoToTile(iso.x, iso.y);
+      expect(t.x).toBeCloseTo(x);
+      expect(t.y).toBeCloseTo(y);
+      const plan = tileToPlan(x, y);
+      expect(planToTile(plan.x, plan.y)).toEqual({ x, y });
+    }
+  });
+
+  it('picks the tile under the pointer, and nothing off the map', () => {
+    expect(pickPlanTile(10, 8, PLAN_TILE * 3.5, PLAN_TILE * 7.99)).toEqual({ x: 3, y: 7 });
+    expect(pickPlanTile(10, 8, tileToPlan(4, 2).x, tileToPlan(4, 2).y)).toEqual({ x: 4, y: 2 });
+    expect(pickPlanTile(10, 8, -1, 5)).toBeNull();
+    expect(pickPlanTile(10, 8, PLAN_TILE * 10, 5)).toBeNull();
   });
 });

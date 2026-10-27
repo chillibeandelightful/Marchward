@@ -85,3 +85,14 @@ After each milestone, add a section:
 - **Check Modern still works** exactly as before (fire and smoke now appear there too).
 - **The questions for this milestone:** does Classic feel like the look you remember? Is switching styles quick, and does everything still read clearly in both?
 **Known issues:** the sky and hills only show when you zoom out far enough to see past the far edge of the site. Raiders battering the back walls are hidden behind them (the view doesn't rotate). Procedural art gets the palette, frame and pixel feel of the mockups but not their painted detail. The banner is a plain gold tower on red until heraldry arrives in a later milestone.
+
+## Follow-up – Top-down view for placing (2026-10-27)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- Pick **2 Wall**, **3 Tower**, **4 Gatehouse** or **5 Keep**. The map flattens into a plan seen from straight above: land coloured by terrain and a little lighter the higher it is, thin lines where the ground slopes, heavy dark lines along cliffs, pieces as their outlines. The same spot stays in the middle of the screen.
+- Lay walls and place pieces as usual. The green or red preview, the costs and the checks all work the same; the tile under the pointer is outlined and is always the one you click.
+- Pick **0 Troops** and post soldiers: red circles are archers, red squares swordsmen. Several on one tile spread out a little.
+- Bring a raid (Defence tab). While the game waits before the fight, tool 0 still shows the top-down view with everyone on the field (raiders are drab). Press Space: the view goes back to isometric for the fight.
+- Pick **1 Look** or any other tool to return to the normal view. Press **T** to turn the top-down switch off (and on again) if you'd rather place in the normal view.
+- **The question:** is placing pieces and troops easier from above? Is anything missing from the plan that you needed to see?
+**Known issues:** the plan doesn't show trees, the camp's tents or workers (the camp is a brown outline). Extras show only the oil cauldron (an orange dot), not arrow slits. Earthworks tools stay isometric.
