@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { COMBAT, RAIDS } from '../src/data/combat';
 import { CALENDAR } from '../src/data/economy';
 import type { TerrainId } from '../src/data/terrain';
-import { bowReach } from '../src/sim/battle';
+import { bowReach, deploying, redeploy } from '../src/sim/battle';
 import { isWinter } from '../src/sim/calendar';
 import { createPlan, placePieces, toggleExtra, type PieceSpec } from '../src/sim/castle';
 import { addPost, raidStrength } from '../src/sim/defence';
@@ -199,6 +199,30 @@ describe('defending', () => {
     expect(addPost(map, plan, e, d, 'archer', 5, 5)).toBeNull();
     expect(addPost(map, plan, e, d, 'archer', 6, 5)).toMatch(/have posts/);
     expect(addPost(map, plan, e, d, 'swordsman', 6, 5)).toBeNull();
+  });
+
+  it('troops can be posted after the raiders arrive, until the fighting starts', () => {
+    const s = field();
+    s.economy.troops = { swordsman: 0, archer: 1 };
+    s.economy.troopsWanted = { swordsman: 0, archer: 1 };
+    raidNow(s);
+    const b = s.defence.battle;
+    if (!b) throw new Error('no battle');
+    expect(deploying(b)).toBe(true);
+    const raiders = b.units.filter((u) => u.side !== 'defender').map((u) => [u.id, u.x, u.y]);
+    expect(addPost(s.map, s.plan, s.economy, s.defence, 'archer', 12, 20)).toBeNull();
+    expect(redeploy(s)).toBe(true);
+    const archers = b.units.filter((u) => u.type === 'archer');
+    expect(archers).toHaveLength(1);
+    expect([Math.round(archers[0]?.x ?? 0), Math.round(archers[0]?.y ?? 0)]).toEqual([12, 20]);
+    expect(b.stats.start.archer).toBe(1);
+    // The raiders haven't moved.
+    expect(b.units.filter((u) => u.side !== 'defender').map((u) => [u.id, u.x, u.y])).toEqual(raiders);
+    // Once the fight starts, posts no longer move anyone.
+    stepSim(s);
+    expect(deploying(b)).toBe(false);
+    s.defence.posts = [];
+    expect(redeploy(s)).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 import { ECONOMY, SEASON_NAME } from '../data/economy';
 import { dateOf, formatDate } from '../sim/calendar';
 import { efficiency, mouths, totalWorkers } from '../sim/economy';
-import { battleCounts, battleSeconds } from '../sim/battle';
+import { battleCounts, battleSeconds, deploying } from '../sim/battle';
 import { today } from '../sim/state';
 import { button, crowns, el, setClass, setText } from './dom';
 import { SPEEDS, type GameHost } from './host';
@@ -78,7 +78,7 @@ export class TopBar {
       const c = battleCounts(b);
       setText(
         this.alert,
-        `⚔ Raid ${b.raid}, ${Math.floor(battleSeconds(b))}s · raiders left ${c.attackers} · your soldiers ${c.defenders}${b.phase === 'retreat' ? ' · they are falling back' : ''}${speed === 0 ? ' · paused: press Space to fight' : ''}`,
+        `⚔ Raid ${b.raid}, ${Math.floor(battleSeconds(b))}s · raiders left ${c.attackers} · your soldiers ${c.defenders}${b.phase === 'retreat' ? ' · they are falling back' : ''}${speed === 0 ? (deploying(b) ? ' · post troops with tool 0, then press Space to fight' : ' · paused: press Space to fight') : ''}`,
       );
       setClass(this.alert, 'alert bad');
     } else if (def.raids && def.warned) {

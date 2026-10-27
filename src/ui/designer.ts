@@ -28,6 +28,7 @@ import {
   type PlanView,
 } from '../sim/castle';
 import { EXTRAS, TROOPS, UNITS, type ExtraId, type TroopType } from '../data/combat';
+import { redeploy } from '../sim/battle';
 import { addPost, postProblem, postsAt, removePost } from '../sim/defence';
 import { walkLine } from '../sim/site';
 import type { SimState } from '../sim/state';
@@ -90,8 +91,11 @@ export interface DesignerHost {
   buildLines(piece: Piece): Line[];
   /** The whole game, for the garrison's posts and building progress. */
   readonly sim: SimState;
-  /** A battle is on: in classic control nothing can be changed until it's over. */
-  locked(): boolean;
+  /**
+   * A battle is on. 'deploy': the raiders have arrived but the fight hasn't started, so troops can
+   * still be posted; 'fight': in classic control nothing can be changed until it's over.
+   */
+  locked(): 'deploy' | 'fight' | null;
 }
 
 /**
@@ -162,8 +166,13 @@ export class Designer {
   press(tile: Tile | null): void {
     if (!tile) return;
     this.notice = null;
-    if (this.host.locked()) {
-      this.notice = { text: 'Nothing can be changed while the battle is on (classic control)', bad: true };
+    const locked = this.host.locked();
+    if (locked === 'fight') {
+      this.notice = { text: 'The fight is on: your soldiers act on their own until it ends (classic control)', bad: true };
+      return;
+    }
+    if (locked === 'deploy' && this.tool !== 'troops') {
+      this.notice = { text: 'Raiders are here: only troops can be posted now (tool 0). Press Space to fight.', bad: true };
       return;
     }
     switch (this.tool) {
@@ -305,11 +314,16 @@ export class Designer {
     if (this.sheer) {
       if (!removePost(sim.defence, tile.x, tile.y, this.troop) && !removePost(sim.defence, tile.x, tile.y))
         this.notice = { text: 'Nobody is posted here', bad: true };
-      else this.notice = { text: 'Post taken off', bad: false };
+      else {
+        this.notice = { text: 'Post taken off', bad: false };
+        redeploy(sim);
+      }
       return;
     }
     const problem = addPost(sim.map, sim.plan, sim.economy, sim.defence, this.troop, tile.x, tile.y);
     this.notice = problem ? { text: problem, bad: true } : { text: `${UNITS[this.troop].name} posted here`, bad: false };
+    // With the raiders waiting at the edge, the soldiers move to the new posts straight away.
+    if (!problem) redeploy(sim);
   }
 
   /** Lines for the readout about the hovered tile: the piece there, or what would happen on click. */

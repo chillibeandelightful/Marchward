@@ -1,6 +1,6 @@
 import { RAIDS, TROOP_TYPES, TROOPS, UNITS, type TroopType } from '../data/combat';
 import { WAGE_LEVELS } from '../data/economy';
-import { battleCounts, battleSeconds, type BattleReport } from '../sim/battle';
+import { battleCounts, battleSeconds, deploying, redeploy, type BattleReport } from '../sim/battle';
 import { formatDate } from '../sim/calendar';
 import { describeStrength, postCounts, raidStrength } from '../sim/defence';
 import { setTroopsWanted } from '../sim/economy';
@@ -60,6 +60,7 @@ export class DefencePanel {
       button('Post troops (tool 0)', () => defence.postTroops()),
       button('Clear all posts', () => {
         host.sim.defence.posts = [];
+        redeploy(host.sim);
       }),
     );
 
@@ -93,7 +94,10 @@ export class DefencePanel {
     const b = d.battle;
     if (b) {
       const c = battleCounts(b);
-      setText(this.status, `Battle under way: ${Math.floor(battleSeconds(b))} seconds in.`);
+      setText(
+        this.status,
+        deploying(b) ? 'Raiders have arrived! Post your troops (tool 0), then press Space to fight.' : `Battle under way: ${Math.floor(battleSeconds(b))} seconds in.`,
+      );
       setClass(this.status, 'bad');
       setText(
         this.statusDetail,
