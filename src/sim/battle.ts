@@ -5,7 +5,7 @@ import { TRADES } from '../data/economy';
 import { batterTaken, footprint, gateEnds, hasSlits, pieceCost, pieceHp, pieceLevels, pieceName, rangeBonus, type Piece, type PieceKind } from './castle';
 import { EDGES, describeStrength, raidStrength, type Edge } from './defence';
 import { distanceField, downhill, findPath, landCost, type StepCost } from './path';
-import type { Rng } from './rng';
+import { Rng } from './rng';
 import { walkLine } from './site';
 import type { SimState } from './state';
 import { heightAt, inBounds, NEIGHBOURS, terrainAt, type TerrainMap } from './terrain';
@@ -422,6 +422,34 @@ export function startBattle(s: SimState, rng: Rng): BattleState {
   s.works.crew = {};
   s.works.idle = { ...s.economy.workers };
   return b;
+}
+
+/** True while the raiders have arrived but the fighting hasn't begun: troops can still be posted. */
+export function deploying(b: BattleState): boolean {
+  return b.tick === 0;
+}
+
+/**
+ * Before the first blow, put the garrison out again from the current posts (after the player
+ * changes them). Raiders stay where they are; does nothing once the fight has started.
+ */
+export function redeploy(s: SimState): boolean {
+  const b = s.defence.battle;
+  if (!b || !deploying(b)) return false;
+  const { map } = s;
+  const rng = new Rng(s.rngState);
+  const raiders = b.units.filter((u) => u.side !== 'defender');
+  b.units = raiders;
+  for (const t of TROOP_TYPES) b.stats.start[t] = 0;
+  const der = derive(map, b);
+  // Place against where the raiders gathered, as at the start.
+  const n = Math.max(1, raiders.length);
+  const ex = Math.round(raiders.reduce((a, u) => a + u.x, 0) / n);
+  const ey = Math.round(raiders.reduce((a, u) => a + u.y, 0) / n);
+  placeDefenders(s, b, rng, der, ex, ey);
+  b.stats.manned = [...new Set(b.units.filter((u) => u.on).map((u) => u.on))];
+  s.rngState = rng.getState();
+  return true;
 }
 
 function tileDist(map: TerrainMap, i: number, x: number, y: number): number {

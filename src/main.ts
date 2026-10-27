@@ -4,6 +4,7 @@ import { simConfig } from './data/config';
 import { formatDate } from './sim/calendar';
 import { pieceAt, pieceLevels, planReport, viewPlan, type Piece, type PlanReport, type PlanView } from './sim/castle';
 import { FixedStepLoop } from './sim/loop';
+import { deploying } from './sim/battle';
 import { createSim, raidNow, stepSim, today, type SimState, type TickEvents } from './sim/state';
 import { findPath, landCost } from './sim/path';
 import { footprint } from './sim/castle';
@@ -166,7 +167,7 @@ async function start(): Promise<void> {
       get sim() {
         return sim;
       },
-      locked: () => sim.defence.battle !== null,
+      locked: () => (sim.defence.battle ? (deploying(sim.defence.battle) ? 'deploy' : 'fight') : null),
     },
     toolsEl,
     tabs.pages.plan,
