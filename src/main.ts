@@ -103,7 +103,7 @@ async function start(): Promise<void> {
   let showPlanned = false;
   const shownMap = () => (showPlanned ? view.map : sim.map);
   const shownView = (): PlanView => ({ ...view, map: shownMap() });
-  let shapes = buildTileShapes(shownMap());
+  let shapes = buildTileShapes(shownMap(), view.occupant);
   const shapeIndex = (list: readonly TileShape[]) => {
     const out: TileShape[] = [];
     for (const s of list) out[s.y * sim.map.width + s.x] = s;
@@ -132,14 +132,22 @@ async function start(): Promise<void> {
   scene.addChild(plan.root);
 
   /** Something changed: rebuild the plan snapshot and redraw what's needed. `land` lists tiles whose drawn height may have changed. */
-  const refresh = (land: readonly Tile[] | 'all') => {
+  const refresh = (asked: readonly Tile[] | 'all') => {
     routes.clear();
     planDirty = true;
+    const before = view.occupant;
     view = viewPlan(sim.map, sim.plan);
+    // The ground is drawn flat under pieces, so tiles where a piece came or went are redrawn too.
+    let land = asked;
+    if (land !== 'all') {
+      const moved: Tile[] = [];
+      for (let i = 0; i < before.length; i++) if (!before[i] !== !view.occupant[i]) moved.push({ x: i % sim.map.width, y: Math.floor(i / sim.map.width) });
+      if (moved.length > 0) land = [...land, ...moved];
+    }
     report = planReport(sim.map, view);
     art.setView(shownView(), new Set(report.problems.map((p) => p.piece.id)));
     if (land === 'all') {
-      shapes = buildTileShapes(shownMap());
+      shapes = buildTileShapes(shownMap(), view.occupant);
       shapeAt = shapeIndex(shapes);
       terrain.setLand(shownMap(), shapes);
     } else if (land.length > 0) {
@@ -155,7 +163,7 @@ async function start(): Promise<void> {
             const i = y * sim.map.width + x;
             const old = shapeAt[i];
             if (!old || !inBounds(map, x, y)) continue;
-            const fresh = buildTileShape(map, x, y);
+            const fresh = buildTileShape(map, x, y, view.occupant);
             list[shapes.indexOf(old)] = fresh;
             shapeAt[i] = fresh;
             rows.add(x + y);

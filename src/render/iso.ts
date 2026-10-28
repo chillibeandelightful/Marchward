@@ -32,12 +32,12 @@ export const VIEWS: Record<ViewId, ViewAngle> = {
   high: { id: 'high', name: 'High view', tileW: 64, tileH: 40, levelH: 14, structureScale: 1.75, sky: 0.13, haze: 0.06, homeCloser: 2 },
   // Looking across at the castle rather than down on it: flat diamonds, so the ground takes
   // less of the screen and wall faces read tall without much stretching, and more sky.
-  low: { id: 'low', name: 'Low view', tileW: 64, tileH: 24, levelH: 18, structureScale: 1.4, sky: 0.2, haze: 0.1, homeCloser: 2 },
+  low: { id: 'low', name: 'Low view', tileW: 64, tileH: 16, levelH: 26, structureScale: 1.5, sky: 0.07, haze: 0.14, homeCloser: 2 },
 };
 
 /** The numbers the tuning panel can change, with their limits and steps. */
 export const TUNABLE = {
-  tileH: { name: 'Tile depth (smaller is a lower angle)', min: 16, max: 48, step: 1 },
+  tileH: { name: 'Tile depth (smaller is a lower angle)', min: 12, max: 48, step: 1 },
   levelH: { name: 'Ground height step', min: 6, max: 28, step: 1 },
   structureScale: { name: 'Wall and tower height', min: 1, max: 3, step: 0.05 },
   sky: { name: 'Sky', min: 0, max: 0.4, step: 0.01 },

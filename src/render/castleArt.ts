@@ -222,7 +222,7 @@ export class CastleArt implements RowExtras {
     let low = Infinity;
     for (const [x, y] of footprint(p)) {
       if (!inBounds(map, x, y)) continue;
-      const c = tileCorners(map, x, y);
+      const c = tileCorners(map, x, y, this.view.occupant);
       low = Math.min(low, c.n, c.e, c.s, c.w);
     }
     return Number.isFinite(low) ? low : 0;
