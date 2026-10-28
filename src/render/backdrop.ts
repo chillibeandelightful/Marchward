@@ -3,21 +3,17 @@ import { hash2 } from '../sim/noise';
 import { style, type Backdrop as BackdropColours } from './styles';
 import { mix } from './terrainStyle';
 
-/** In High view, the share of the screen's height the sky takes, and the band of haze below it where the land fades into the moor. */
-const HIGH_SKY = 0.13;
-const HIGH_HAZE = 0.06;
-
 /**
  * What lies beyond the site: moorland running back to a line of hills under an overcast sky.
  * Drawn in screen space. In the Standard view (in styles that have a backdrop) it sits behind
  * the map and its horizon follows the map's far corner, so the site seems to sit in a wider land.
- * In High view the sky and hills stay across the top of the screen at every zoom, in front of
+ * In the High and Low views the sky and hills stay across the top of the screen at every zoom, in front of
  * the land, which fades into the moor beneath them; only the moor is drawn behind the map.
  */
 export class Backdrop {
   /** Behind the map. */
   readonly root = new Graphics();
-  /** In front of the map: the High view sky. */
+  /** In front of the map: the pinned sky of the High and Low views. */
   readonly front = new Graphics();
   private key = '';
   /** Screen y below which the land shows; 0 when nothing covers it. */
@@ -25,12 +21,14 @@ export class Backdrop {
 
   /**
    * `horizon` is the screen y of the map's far corner; `shift` slides the hills sideways as the
-   * view pans; `high` keeps the sky at the top of the screen.
+   * view pans; `sky` and `haze` (shares of the screen's height) keep the sky at the top of the
+   * screen when above 0.
    */
-  update(width: number, height: number, horizon: number, shift: number, high: boolean): void {
+  update(width: number, height: number, horizon: number, shift: number, sky: number, haze: number): void {
     const sx = Math.round(shift);
-    const y0 = high ? Math.round(height * HIGH_SKY) : Math.round(horizon - 30);
-    const key = `${style().id}:${width}x${height}:${y0}:${sx}:${high}`;
+    const high = sky > 0;
+    const y0 = high ? Math.round(height * sky) : Math.round(horizon - 30);
+    const key = `${style().id}:${width}x${height}:${y0}:${sx}:${high}:${haze}`;
     if (key === this.key) return;
     this.key = key;
     const back = this.root.clear();
@@ -41,9 +39,9 @@ export class Backdrop {
     back.rect(0, 0, width, height).fill(b.moor);
     if (high) {
       // The far land fades into the moor in thin bands; the dithering blends them in Classic.
-      const haze = Math.round(height * HIGH_HAZE);
+      const fade = Math.round(height * haze);
       const bands = 12;
-      for (let i = 0; i < bands; i++) front.rect(0, y0 + (haze * i) / bands, width, haze / bands + 1).fill({ color: b.moor, alpha: 0.85 * (1 - i / bands) });
+      for (let i = 0; i < bands; i++) front.rect(0, y0 + (fade * i) / bands, width, fade / bands + 1).fill({ color: b.moor, alpha: 0.85 * (1 - i / bands) });
       this.sky(front, b, width, y0, sx);
       this.skyLine = y0;
     } else if (y0 > 0) {

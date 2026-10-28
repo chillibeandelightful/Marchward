@@ -23,7 +23,8 @@ import { ClassicFrame } from './ui/classicFrame';
 import { loadLook, storeLook, type Look } from './ui/look';
 import { Camera } from './render/camera';
 import { CastleArt, pickPiece } from './render/castleArt';
-import { drawnLevels, isoToScreen, setViewAngle, viewAngle, VIEW_ORDER } from './render/iso';
+import { drawnLevels, isoToScreen, setViewAngle, setViewTuning, viewAngle, VIEW_ORDER } from './render/iso';
+import { loadTuning, TunePanel } from './ui/tunePanel';
 import { buildTileShape, buildTileShapes, pickTile, surfaceLevel, type TileShape } from './render/tileGeometry';
 import { TerrainView } from './render/terrainView';
 import { isoToTile, pickPlanTile, PLAN_TILE, planToTile, tileToIso, tileToPlan, wantsTopDown } from './render/topDown';
@@ -57,6 +58,8 @@ async function start(): Promise<void> {
   // The look is chosen before anything is drawn, so the land is built once in the right style.
   let look: Look = loadLook();
   setStyle(look.style);
+  const tuning = loadTuning();
+  setViewTuning(tuning);
   setViewAngle(look.view);
   document.body.classList.toggle('classic', style().ui === 'classic');
 
@@ -252,6 +255,20 @@ async function start(): Promise<void> {
     return p;
   };
 
+  /** Change the view angle with `change`, redraw the land at it and keep the same spot of land in the middle of the screen. */
+  function reangle(change: () => void): void {
+    const t = topDown ? null : isoToTile(camera.x, camera.y);
+    change();
+    refresh('all');
+    frameLand();
+    if (t) {
+      const p = tileToIso(t.x, t.y);
+      camera.centreOn(p.x, p.y);
+    }
+    ghostKey = '';
+    terrain.setHover(hovered);
+  }
+
   /** Switch style, view angle or effect strength: everything is redrawn in the new look at once, without reloading. */
   function applyLook(next: Look): void {
     const restyled = next.style !== look.style;
@@ -260,17 +277,8 @@ async function start(): Promise<void> {
     storeLook(look);
     setStyle(look.style);
     if (turned) {
-      // Keep the same spot of land in the middle of the screen at the new angle.
-      const t = topDown ? null : isoToTile(camera.x, camera.y);
-      setViewAngle(look.view);
-      refresh('all');
-      frameLand();
-      if (t) {
-        const p = tileToIso(t.x, t.y);
-        camera.centreOn(p.x, p.y);
-      }
-      ghostKey = '';
-      terrain.setHover(hovered);
+      reangle(() => setViewAngle(look.view));
+      tunePanel.show();
     }
     const s = style();
     document.body.classList.toggle('classic', s.ui === 'classic');
@@ -286,6 +294,7 @@ async function start(): Promise<void> {
     terrain.setHover(hovered);
   }
 
+  const tunePanel = new TunePanel(tuning, (t) => reangle(() => setViewTuning(t)));
   const reportView = new ReportView(reportEl);
   const defencePanel = new DefencePanel(tabs.pages.defence, game, {
     postTroops: () => designer.setTool('troops'),
@@ -384,6 +393,7 @@ async function start(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyV') forcePlanned = !forcePlanned;
     else if (e.code === 'KeyT') topDownAllowed = !topDownAllowed;
+    else if (e.code === 'Backquote') tunePanel.toggle();
     else if (e.code === 'KeyH') applyLook({ ...look, view: VIEW_ORDER[(VIEW_ORDER.indexOf(look.view) + 1) % VIEW_ORDER.length] ?? 'standard' });
     else if (e.code === 'KeyL') applyLook({ ...look, style: STYLE_ORDER[(STYLE_ORDER.indexOf(look.style) + 1) % STYLE_ORDER.length] ?? 'modern' });
   });
@@ -610,7 +620,7 @@ async function start(): Promise<void> {
     // The land beyond the map: its horizon sits a little below the site's far corner, so hills show
     // behind its back edges, and they drift as the view pans.
     const far = camera.worldToScreen(isoToScreen(0, 0, 0).sx, minY, w, h);
-    backdrop.update(w, h, far.y + (maxY - minY) * camera.zoom * 0.18, camera.x * camera.zoom * 0.2, viewAngle().horizon);
+    backdrop.update(w, h, far.y + (maxY - minY) * camera.zoom * 0.18, camera.x * camera.zoom * 0.2, viewAngle().sky, viewAngle().haze);
     effect.render(w, h);
   });
 }

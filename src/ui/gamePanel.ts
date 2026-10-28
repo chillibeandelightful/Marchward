@@ -45,7 +45,7 @@ const KEYS_HELP = [
   'Space pauses or starts the clock · V shows the land as planned',
   'Right-drag, or WASD / arrow keys, to move · mouse wheel or + / − to zoom',
   '1–9, 0 pick a tool · R turns the gatehouse · Esc cancels',
-  'C recentres · G shows the grid · L steps through Modern, Classic and Drab · H switches the view',
+  'C recentres · G shows the grid · L steps through Modern, Classic and Drab · H steps through the views',
 ];
 
 function describe(file: SaveFile | null | string): string {
@@ -149,10 +149,11 @@ export class GamePanel {
         ['Classic', { style: 'classic' }],
         ['Drab', { style: 'drab' }],
       ]),
-      el('div', 'dim', 'High view is a trial: a steeper angle with the sky always in view and taller stonework. Placing pieces still uses the flat plan. Press H to switch.'),
+      el('div', 'dim', 'High and Low view are trials, both with the sky always in view and taller stonework: High looks down more steeply, Low looks across at the castle. Placing pieces still uses the flat plan. Press H to step through the views, and the ` key to tune the angle.'),
       row('View', [
         ['Standard', { view: 'standard' }],
         ['High view', { view: 'high' }],
+        ['Low view', { view: 'low' }],
       ]),
       ...this.classicOnly,
     );

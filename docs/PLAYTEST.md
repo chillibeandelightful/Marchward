@@ -126,3 +126,12 @@ After each milestone, add a section:
 - **The question:** does High view look closer to the mockups and feel better to play than Standard? Can you still read heights, pick tiles and place pieces accurately? If not, we keep Standard. If it's close, which numbers would you change: steeper or flatter, taller or shorter walls, more or less sky?
 **Known issues:** the stonework is the same procedural art drawn taller, so battlements and arrow slits look small on high walls (M5c redraws the art for whichever view wins). Tall pieces at the back can poke up into the haze under the sky. The view doesn't change zoom when you switch; press C to go to its starting zoom.
 
+## Follow-up – Low view and view tuning (2026-10-28)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- In Game → Look pick **View → Low view**, or press **H** to step through Standard, High view and Low view. Low view looks across at the castle: flatter ground, tall wall faces, more sky.
+- Press the **`** key (top left, under Esc) to open the tuning panel, or add `?tune` to the address. Its sliders change the view you're in: **tile depth** (smaller is a lower, flatter angle), **ground height step** (how tall hills look), **wall and tower height**, **sky** and **haze**. Changes show at once and are kept when you reload. **Reset this view** goes back to the preset.
+- Build or load a castle, then try settings side by side with the reference images. When you find numbers you like, press **Copy numbers** and paste the line to me; that becomes the preset and the basis for the M5c art.
+- **The questions:** which of the three views is closest to what you want? With the sliders, what numbers feel right? Does the courtyard stay visible enough, or would you want the near wall cut away?
+**Known issues:** the art is the same code-drawn stone drawn taller, so battlements and slits look small on tall walls. Very low angles hide more of the courtyard behind the front wall. The panel is a tuning tool and will go once the angle is chosen.
+
