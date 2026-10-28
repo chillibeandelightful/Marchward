@@ -458,7 +458,7 @@ async function start(): Promise<void> {
         }
         const c = s.corners;
         const piece = pieceAt(view, x, y);
-        const p = isoToScreen(x, y, (c.n + c.e + c.s + c.w) / 4 + (piece ? drawnLevels(pieceLevels(piece)) : 0));
+        const p = isoToScreen(x, y, (c.n + c.e + c.s + c.w) / 4 + (piece ? drawnLevels(pieceLevels(piece), piece.kind) : 0));
         return camera.worldToScreen(p.sx, p.sy, app.screen.width, app.screen.height);
       },
       days(n: number) {

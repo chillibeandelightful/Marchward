@@ -108,7 +108,7 @@ export class CastleArt implements RowExtras {
   /** Draw a piece; with `built` under 1 it stands that share of its height, without battlements. */
   drawPiece(g: Graphics, p: PieceSpec | Piece, pal: Palette, built = 1): void {
     const base = this.baseLevel(p) - SINK;
-    const full = Math.max(...footprint(p).map(([x, y]) => heightAt(this.view.map, x, y))) + drawnLevels(pieceLevels(p));
+    const full = Math.max(...footprint(p).map(([x, y]) => heightAt(this.view.map, x, y))) + drawnLevels(pieceLevels(p), p.kind);
     const finished = built >= 1;
     const top = finished ? full : base + (full - base) * Math.max(0.12, built);
     switch (p.kind) {
@@ -196,7 +196,7 @@ export class CastleArt implements RowExtras {
     const x1 = Math.max(...tiles.map(([x]) => x)) + 0.5;
     const y1 = Math.max(...tiles.map(([, y]) => y)) + 0.5;
     const base = this.baseLevel(p) - SINK;
-    const full = Math.max(...tiles.map(([x, y]) => heightAt(this.view.map, x, y))) + drawnLevels(pieceLevels(p));
+    const full = Math.max(...tiles.map(([x, y]) => heightAt(this.view.map, x, y))) + drawnLevels(pieceLevels(p), p.kind);
     const top = base + (full - base) * Math.max(0.12, built) + 0.5;
     const line = (ax: number, ay: number, al: number, bx: number, by: number, bl: number, width: number) =>
       g
@@ -606,7 +606,7 @@ export function pickPiece(view: PlanView, px: number, py: number, groundDiagonal
     if (d <= bestDiagonal) continue;
     const tiles = footprint(p);
     const base = Math.min(...tiles.map(([x, y]) => heightAt(view.map, x, y)));
-    const top = Math.max(...tiles.map(([x, y]) => heightAt(view.map, x, y))) + drawnLevels(pieceLevels(p));
+    const top = Math.max(...tiles.map(([x, y]) => heightAt(view.map, x, y))) + drawnLevels(pieceLevels(p), p.kind);
     const x0 = Math.min(...tiles.map(([x]) => x)) - 0.5;
     const y0 = Math.min(...tiles.map(([, y]) => y)) - 0.5;
     const x1 = Math.max(...tiles.map(([x]) => x)) + 0.5;

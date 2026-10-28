@@ -78,7 +78,10 @@ export function levelPx(): number {
   return active.levelH;
 }
 
-/** How many levels tall a castle piece of `levels` levels is drawn in the active view. */
-export function drawnLevels(levels: number): number {
-  return levels * active.structureScale;
+/** Some pieces are drawn shorter than their height in levels says (art only; the sim's heights stand). */
+const DRAWN_SHARE: Readonly<Record<string, number>> = { keep: 0.5 };
+
+/** How many levels tall a castle piece of `levels` levels, of this kind, is drawn in the active view. */
+export function drawnLevels(levels: number, kind?: string): number {
+  return levels * (DRAWN_SHARE[kind ?? ''] ?? 1) * active.structureScale;
 }
