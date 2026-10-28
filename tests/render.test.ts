@@ -46,6 +46,28 @@ describe('tile corners', () => {
     expect(tileCorners(map, 1, 0)).toEqual({ n: 3, e: 3, s: 3, w: 3 });
   });
 
+  it('meet a castle piece at its own ground, with the slope starting at its foot', () => {
+    const map = mapFrom([
+      [1, 1, 2],
+      [1, 1, 2],
+    ]);
+    const footings = [0, 1, 0, 0, 1, 0];
+    // Without the piece the tile leans up towards its higher neighbour.
+    expect(tileCorners(map, 1, 0).e).toBe(1.5);
+    expect(tileCorners(map, 1, 0, footings)).toEqual({ n: 1, e: 1, s: 1, w: 1 });
+    // The higher neighbour comes down to meet the piece's ground instead of rising over it.
+    const next = tileCorners(map, 2, 0, footings);
+    expect(next.n).toBe(1);
+    expect(next.w).toBe(1);
+  });
+
+  it('keep a smooth ramp under a wall running up a slope', () => {
+    const map = mapFrom([[1, 2]]);
+    const footings = [1, 1];
+    expect(tileCorners(map, 0, 0, footings).e).toBe(1.5);
+    expect(tileCorners(map, 1, 0, footings).n).toBe(1.5);
+  });
+
   it('draw a cliff face with the right kind', () => {
     const shapes = buildTileShapes(mapFrom([[3, 1]]));
     const top = shapes.find((s) => s.x === 0);

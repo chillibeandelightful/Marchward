@@ -59,16 +59,36 @@ const CORNER_OFFSET: Record<keyof Corners, readonly [number, number]> = {
   w: [-0.5, 0.5],
 };
 
+/** Tiles a castle piece stands on (non-zero), indexed y * width + x, as in a plan view's `occupant`. */
+export type Footings = ArrayLike<number>;
+
 /**
  * Corner heights for a tile. Each corner is the average height of the tiles sharing it that
  * are within one level of this tile, so slopes become smooth ramps across neighbours, while
  * cliffs (2+ levels) keep sharp edges. Water stays flat, and land does not lean towards it.
+ * Where a castle piece stands on any of the tiles sharing a corner, that corner takes only the
+ * pieces' ground into account, so the land round a piece comes down to meet its foot instead of
+ * rising over it, while a wall running up a slope still sits on a smooth ramp.
  */
-export function tileCorners(map: TerrainMap, x: number, y: number): Corners {
+export function tileCorners(map: TerrainMap, x: number, y: number, footings?: Footings): Corners {
   const h = heightAt(map, x, y);
   const out: Corners = { n: h, e: h, s: h, w: h };
   if (terrainAt(map, x, y).water) return out;
+  const built = (tx: number, ty: number) => !!footings && inBounds(map, tx, ty) && !!footings[ty * map.width + tx];
   for (const key of ['n', 'e', 's', 'w'] as const) {
+    let pinSum = built(x, y) ? h : 0;
+    let pinCount = built(x, y) ? 1 : 0;
+    for (const [dx, dy] of CORNER_SHARERS[key]) {
+      if (!built(x + dx, y + dy) || terrainAt(map, x + dx, y + dy).water) continue;
+      const nh = heightAt(map, x + dx, y + dy);
+      if (Math.abs(nh - h) >= CLIFF_STEP) continue;
+      pinSum += nh;
+      pinCount++;
+    }
+    if (pinCount > 0) {
+      out[key] = pinSum / pinCount;
+      continue;
+    }
     let sum = h;
     let count = 1;
     for (const [dx, dy] of CORNER_SHARERS[key]) {
@@ -100,8 +120,8 @@ function cornerPoint(x: number, y: number, key: keyof Corners, level: number): P
   return { x: p.sx, y: p.sy };
 }
 
-export function buildTileShape(map: TerrainMap, x: number, y: number): TileShape {
-  const corners = tileCorners(map, x, y);
+export function buildTileShape(map: TerrainMap, x: number, y: number, footings?: Footings): TileShape {
+  const corners = tileCorners(map, x, y, footings);
   const level = heightAt(map, x, y);
   const top = (['n', 'e', 's', 'w'] as const).map((k) => cornerPoint(x, y, k, corners[k]));
   const faces: Face[] = [];
@@ -118,7 +138,7 @@ export function buildTileShape(map: TerrainMap, x: number, y: number): TileShape
     let bottomB: number;
     let kind: FaceKind;
     if (inBounds(map, e.nx, e.ny)) {
-      const nc = tileCorners(map, e.nx, e.ny);
+      const nc = tileCorners(map, e.nx, e.ny, footings);
       bottomA = Math.min(topA, nc[e.na]);
       bottomB = Math.min(topB, nc[e.nb]);
       kind = level - heightAt(map, e.nx, e.ny) >= CLIFF_STEP ? 'cliff' : 'bank';
@@ -157,12 +177,12 @@ export function buildTileShape(map: TerrainMap, x: number, y: number): TileShape
 }
 
 /** Shapes for every tile, in painter's order (back to front). */
-export function buildTileShapes(map: TerrainMap): TileShape[] {
+export function buildTileShapes(map: TerrainMap, footings?: Footings): TileShape[] {
   const shapes: TileShape[] = [];
   for (let d = 0; d < map.width + map.height - 1; d++) {
     for (let x = 0; x < map.width; x++) {
       const y = d - x;
-      if (y >= 0 && y < map.height) shapes.push(buildTileShape(map, x, y));
+      if (y >= 0 && y < map.height) shapes.push(buildTileShape(map, x, y, footings));
     }
   }
   return shapes;
