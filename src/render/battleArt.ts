@@ -55,7 +55,7 @@ export function drawBattle(host: ActorHost, sim: SimState, alpha: number, timeMs
     const g = host.layer(sp.x + sp.y + 1);
     const pc = Object.values(b.pieces).find((p) => p.x === sp.x && p.y === sp.y);
     if (!g || !pc) continue;
-    const top = isoToScreen(sp.x, sp.y, pc.ground + drawnLevels(pc.levels));
+    const top = isoToScreen(sp.x, sp.y, pc.ground + drawnLevels(pc.levels, pc.kind));
     const base = isoToScreen(sp.x, sp.y, host.ground(sp.x, sp.y));
     // A sheet of oil down the face, then a steaming pool at the foot.
     g.rect(top.sx - 4, top.sy, 8, Math.max(0, base.sy - top.sy) * Math.min(1, age * 3)).fill({ color: fx.oil, alpha: 0.8 * (1 - age) });
@@ -74,7 +74,7 @@ function drawUnit(host: ActorHost, sim: SimState, b: BattleState, u: Unit, t: nu
   const g = host.layer(rowFor(sim, u.x, u.y, u.on ? b.pieces[u.on] : undefined));
   if (!g) return;
   const on = u.on ? b.pieces[u.on] : undefined;
-  const level = on ? on.ground + drawnLevels(on.levels) : host.ground(u.x, u.y);
+  const level = on ? on.ground + drawnLevels(on.levels, on.kind) : host.ground(u.x, u.y);
   const p = isoToScreen(u.x, u.y, level);
   drawSoldier(g, p.sx, p.sy, u.type, u.act, t + u.id * 0.37, u.hp / UNITS[u.type].hp, u.side === 'defender' && u.on !== 0);
 }
@@ -156,7 +156,7 @@ function drawPieceHealth(host: ActorHost, sim: SimState, b: BattleState): void {
     if (!g) continue;
     const cx = p.kind === 'keep' ? p.x + 0.5 : p.x;
     const cy = p.kind === 'keep' ? p.y + 0.5 : p.y;
-    const s = isoToScreen(cx, cy, p.ground + drawnLevels(p.levels) + 0.8);
+    const s = isoToScreen(cx, cy, p.ground + drawnLevels(p.levels, p.kind) + 0.8);
     const frac = Math.max(0, p.hp / p.max);
     g.rect(s.sx - 14, s.sy - 3, 28, 4).fill({ color: 0x000000, alpha: 0.65 });
     g.rect(s.sx - 13, s.sy - 2, 26 * frac, 2).fill(frac > 0.5 ? 0xd9d2c0 : frac > 0.25 ? 0xf0c56a : 0xf08a72);
@@ -190,7 +190,7 @@ function drawGarrison(host: ActorHost, sim: SimState, t: number): void {
     if (piece && built) {
       const progress = pieceProgress(sim.map, sim.works, piece);
       const levels = progress >= 1 ? pieceLevels(piece) : Math.max(1, Math.round(pieceLevels(piece) * progress));
-      level = Math.max(...footprint(piece).map(([px, py]) => heightAt(sim.map, px, py))) + drawnLevels(levels);
+      level = Math.max(...footprint(piece).map(([px, py]) => heightAt(sim.map, px, py))) + drawnLevels(levels, piece.kind);
     }
     const p = isoToScreen(x, y, level);
     drawSoldier(g, p.sx, p.sy, post.type, 'stand', t + n, 1, !!(piece && built));

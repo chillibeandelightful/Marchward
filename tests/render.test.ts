@@ -257,6 +257,11 @@ describe('view angle', () => {
     expect(drawnLevels(2)).toBe(2);
   });
 
+  it('draws the keep at half its height in levels', () => {
+    expect(drawnLevels(5, 'keep')).toBe(2.5);
+    expect(drawnLevels(5, 'tower')).toBe(5);
+  });
+
   it('picks the tile at its own centre in High view, and converts to and from plan coordinates', () => {
     setViewAngle('high');
     try {
