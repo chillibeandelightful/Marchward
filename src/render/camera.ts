@@ -6,7 +6,7 @@ export class Camera {
   private bounds = { minX: -Infinity, minY: -Infinity, maxX: Infinity, maxY: Infinity };
 
   constructor(
-    readonly minZoom = 0.3,
+    public minZoom = 0.3,
     readonly maxZoom = 3,
   ) {}
 

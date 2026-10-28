@@ -45,7 +45,7 @@ const KEYS_HELP = [
   'Space pauses or starts the clock · V shows the land as planned',
   'Right-drag, or WASD / arrow keys, to move · mouse wheel or + / − to zoom',
   '1–9, 0 pick a tool · R turns the gatehouse · Esc cancels',
-  'C recentres · G shows the grid · L steps through Modern, Classic and Drab',
+  'C recentres · G shows the grid · L steps through Modern, Classic and Drab · H switches the view',
 ];
 
 function describe(file: SaveFile | null | string): string {
@@ -106,7 +106,7 @@ export class GamePanel {
     this.refresh();
   }
 
-  /** Style buttons, and for Classic how chunky the pixels are, how strong the dithering is and where it goes. Kept in this browser, not in saves. */
+  /** Style and view buttons, and for Classic how chunky the pixels are, how strong the dithering is and where it goes. Kept in this browser, not in saves. */
   private lookSection(): HTMLElement {
     const s = el('section');
     const row = (label: string, options: readonly [string, Partial<Look>][]) => {
@@ -148,6 +148,11 @@ export class GamePanel {
         ['Modern', { style: 'modern' }],
         ['Classic', { style: 'classic' }],
         ['Drab', { style: 'drab' }],
+      ]),
+      el('div', 'dim', 'High view is a trial: a steeper angle with the sky always in view and taller stonework. Placing pieces still uses the flat plan. Press H to switch.'),
+      row('View', [
+        ['Standard', { view: 'standard' }],
+        ['High view', { view: 'high' }],
       ]),
       ...this.classicOnly,
     );

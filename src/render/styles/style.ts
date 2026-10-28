@@ -98,7 +98,10 @@ export interface VisualStyle {
   figures: FigureColours;
   effects: EffectColours;
   sprites: SpriteSet;
+  /** Drawn behind the map in the Standard view, or not at all. */
   backdrop: Backdrop | null;
+  /** The sky and hills kept across the top of the screen in High view. */
+  horizon: Backdrop;
   /** Whether the chunky-pixel and limited-palette screen effect is used (its strength is a setting). */
   retro: boolean;
   /** Which page layout the UI uses. */

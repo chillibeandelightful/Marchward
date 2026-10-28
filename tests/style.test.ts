@@ -75,7 +75,7 @@ describe('look settings', () => {
   });
 
   it('read back what was stored', () => {
-    expect(parseLook(JSON.stringify({ style: 'classic', pixel: 3, dither: 0.5, surfaces: true }))).toEqual({ style: 'classic', pixel: 3, dither: 0.5, surfaces: true });
+    expect(parseLook(JSON.stringify({ style: 'classic', view: 'high', pixel: 3, dither: 0.5, surfaces: true }))).toEqual({ style: 'classic', view: 'high', pixel: 3, dither: 0.5, surfaces: true });
   });
 
   it('take any dither strength from off to full, in 5% steps', () => {
@@ -86,6 +86,11 @@ describe('look settings', () => {
   });
 
   it('keep settings stored before the strength slider and surfaces toggle', () => {
-    expect(parseLook('{"style":"classic","pixel":2,"dither":0.5}')).toEqual({ style: 'classic', pixel: 2, dither: 0.5, surfaces: false });
+    expect(parseLook('{"style":"classic","pixel":2,"dither":0.5}')).toEqual({ style: 'classic', view: 'standard', pixel: 2, dither: 0.5, surfaces: false });
+  });
+
+  it('keep the view to Standard or High view', () => {
+    expect(parseLook('{"view":"high"}').view).toBe('high');
+    expect(parseLook('{"view":"sideways"}').view).toBe('standard');
   });
 });

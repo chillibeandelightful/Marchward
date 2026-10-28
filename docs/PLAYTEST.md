@@ -113,3 +113,16 @@ After each milestone, add a section:
 - Hire workers and start the clock: as a piece is built, stone rises inside its outline with scaffolding, and the outline goes once it's finished.
 - A planned piece with a problem (for example, left standing on a slope that later earthworks break) is outlined in red.
 **Known issues:** where a road runs through a planned piece, the road can be drawn over part of the outline.
+
+## M5b – High view (2026-10-28)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- Open the **Game** tab (the floppy-disk icon in Classic and Drab) and find **View** in the Look section. Pick **High view**, or press **H** anywhere to switch back and forth. Your choice is remembered when you reload.
+- In High view the land is seen from higher up: fatter tiles, an overcast sky with hills across the top of the screen, and the far land fading into moorland under it. Zoom in and out and pan around: the sky stays put.
+- Plan a ring of walls with towers, a gatehouse and a keep (or load a saved game with a castle). Walls, towers and the keep stand much taller than in Standard. Hire workers and watch the scaffolding rise with them.
+- Point at tiles and pieces, raise and lower ground, and try placing pieces (the flat plan view for placing is unchanged). Check that the tile outlined is the one you meant, and that hills and cliffs still read clearly.
+- Bring a raid from the Defence tab: archers should stand on the wall tops, and HP bars sit above the taller pieces.
+- Try it in Modern, Classic and Drab (L steps through them).
+- **The question:** does High view look closer to the mockups and feel better to play than Standard? Can you still read heights, pick tiles and place pieces accurately? If not, we keep Standard. If it's close, which numbers would you change: steeper or flatter, taller or shorter walls, more or less sky?
+**Known issues:** the stonework is the same procedural art drawn taller, so battlements and arrow slits look small on high walls (M5c redraws the art for whichever view wins). Tall pieces at the back can poke up into the haze under the sky. The view doesn't change zoom when you switch; press C to go to its starting zoom.
+

@@ -23,7 +23,7 @@ import { ClassicFrame } from './ui/classicFrame';
 import { loadLook, storeLook, type Look } from './ui/look';
 import { Camera } from './render/camera';
 import { CastleArt, pickPiece } from './render/castleArt';
-import { isoToScreen } from './render/iso';
+import { drawnLevels, isoToScreen, setViewAngle, viewAngle, VIEW_ORDER } from './render/iso';
 import { buildTileShape, buildTileShapes, pickTile, surfaceLevel, type TileShape } from './render/tileGeometry';
 import { TerrainView } from './render/terrainView';
 import { isoToTile, pickPlanTile, PLAN_TILE, planToTile, tileToIso, tileToPlan, wantsTopDown } from './render/topDown';
@@ -57,6 +57,7 @@ async function start(): Promise<void> {
   // The look is chosen before anything is drawn, so the land is built once in the right style.
   let look: Look = loadLook();
   setStyle(look.style);
+  setViewAngle(look.view);
   document.body.classList.toggle('classic', style().ui === 'classic');
 
   const app = new Application();
@@ -118,7 +119,7 @@ async function start(): Promise<void> {
   world.addChild(terrain.root, sky, ghosts);
   const backdrop = new Backdrop();
   const scene = new Container();
-  scene.addChild(backdrop.root, world);
+  scene.addChild(backdrop.root, world, backdrop.front);
   const effect = new ScreenEffect(app.renderer, app.stage, scene);
   effect.details = () => [...terrain.detailLayers(), sky, ghosts];
   // The flat plan, shown instead of the isometric world (and its backdrop) while placing pieces or troops.
@@ -251,12 +252,26 @@ async function start(): Promise<void> {
     return p;
   };
 
-  /** Switch style or effect strength: everything is redrawn in the new look at once, without reloading. */
+  /** Switch style, view angle or effect strength: everything is redrawn in the new look at once, without reloading. */
   function applyLook(next: Look): void {
     const restyled = next.style !== look.style;
+    const turned = next.view !== look.view;
     look = next;
     storeLook(look);
     setStyle(look.style);
+    if (turned) {
+      // Keep the same spot of land in the middle of the screen at the new angle.
+      const t = topDown ? null : isoToTile(camera.x, camera.y);
+      setViewAngle(look.view);
+      refresh('all');
+      frameLand();
+      if (t) {
+        const p = tileToIso(t.x, t.y);
+        camera.centreOn(p.x, p.y);
+      }
+      ghostKey = '';
+      terrain.setHover(hovered);
+    }
     const s = style();
     document.body.classList.toggle('classic', s.ui === 'classic');
     app.renderer.background.color = s.background;
@@ -308,21 +323,32 @@ async function start(): Promise<void> {
   }
   effect.configure(style().retro, look.pixel, look.dither, look.surfaces, palette());
 
-  const minX = Math.min(...shapes.map((s) => s.minX));
-  const minY = Math.min(...shapes.map((s) => s.minY));
-  const maxX = Math.max(...shapes.map((s) => s.maxX));
-  const maxY = Math.max(...shapes.map((s) => s.maxY));
-  // Allow zooming out until the whole site fits, but no further.
-  const fit = Math.min(app.screen.width / (maxX - minX), app.screen.height / (maxY - minY)) * 0.95;
-  const camera = new Camera(Math.min(0.3, fit), 3);
-  camera.setBounds(minX, minY, maxX, maxY);
+  // The site's extent on screen at the current view angle, worked out again when the angle changes.
+  let minX = 0;
+  let minY = 0;
+  let maxX = 0;
+  let maxY = 0;
+  let fit = 1;
+  const camera = new Camera(0.3, 3);
+  function frameLand(): void {
+    minX = Math.min(...shapes.map((s) => s.minX));
+    minY = Math.min(...shapes.map((s) => s.minY));
+    maxX = Math.max(...shapes.map((s) => s.maxX));
+    maxY = Math.max(...shapes.map((s) => s.maxY));
+    // Allow zooming out until the whole site fits, but no further.
+    fit = Math.min(app.screen.width / (maxX - minX), app.screen.height / (maxY - minY)) * 0.95;
+    camera.minZoom = Math.min(0.3, fit);
+    camera.zoom = Math.max(camera.zoom, camera.minZoom);
+    if (!topDown) camera.setBounds(minX, minY, maxX, maxY);
+  }
   const home = () => {
-    camera.zoom = Math.max(camera.minZoom, Math.min(0.75, fit * 1.6));
+    camera.zoom = Math.max(camera.minZoom, Math.min(0.75, fit * 1.6) * viewAngle().homeCloser);
     if (topDown) camera.centreOn((sim.map.width * PLAN_TILE) / 2, (sim.map.height * PLAN_TILE) / 2);
     else camera.centreOn((minX + maxX) / 2, (minY + maxY) / 2);
   };
   /** Showing the flat plan rather than the isometric view. T turns this off and on for the placing tools. */
   let topDown = false;
+  frameLand();
   let topDownAllowed = true;
   /** Switch views, keeping the same spot of land in the middle of the screen. */
   const setTopDown = (on: boolean) => {
@@ -330,6 +356,7 @@ async function start(): Promise<void> {
     topDown = on;
     world.visible = !on;
     backdrop.root.visible = !on;
+    backdrop.front.visible = !on;
     plan.root.visible = on;
     if (on) {
       const t = isoToTile(camera.x, camera.y);
@@ -357,6 +384,7 @@ async function start(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyV') forcePlanned = !forcePlanned;
     else if (e.code === 'KeyT') topDownAllowed = !topDownAllowed;
+    else if (e.code === 'KeyH') applyLook({ ...look, view: VIEW_ORDER[(VIEW_ORDER.indexOf(look.view) + 1) % VIEW_ORDER.length] ?? 'standard' });
     else if (e.code === 'KeyL') applyLook({ ...look, style: STYLE_ORDER[(STYLE_ORDER.indexOf(look.style) + 1) % STYLE_ORDER.length] ?? 'modern' });
   });
   window.addEventListener('resize', () => frame.relayout());
@@ -412,7 +440,7 @@ async function start(): Promise<void> {
         }
         const c = s.corners;
         const piece = pieceAt(view, x, y);
-        const p = isoToScreen(x, y, (c.n + c.e + c.s + c.w) / 4 + (piece ? pieceLevels(piece) : 0));
+        const p = isoToScreen(x, y, (c.n + c.e + c.s + c.w) / 4 + (piece ? drawnLevels(pieceLevels(piece)) : 0));
         return camera.worldToScreen(p.sx, p.sy, app.screen.width, app.screen.height);
       },
       days(n: number) {
@@ -505,7 +533,8 @@ async function start(): Promise<void> {
       const t = wp ? pickPlanTile(sim.map.width, sim.map.height, wp.x, wp.y) : null;
       next = t ? (shapeAt[t.y * sim.map.width + t.x] ?? null) : null;
     } else {
-      const groundTile = wp ? pickTile(shapes, wp.x, wp.y) : null;
+      // Nothing on the land can be pointed at through the High view sky.
+      const groundTile = wp && p && !backdrop.covers(p.y) ? pickTile(shapes, wp.x, wp.y) : null;
       // Pointing at a wall or tower means that piece's tile, not the ground behind it.
       const piece =
         wp && groundTile && designer.tool !== 'raise' && designer.tool !== 'lower'
@@ -581,7 +610,7 @@ async function start(): Promise<void> {
     // The land beyond the map: its horizon sits a little below the site's far corner, so hills show
     // behind its back edges, and they drift as the view pans.
     const far = camera.worldToScreen(isoToScreen(0, 0, 0).sx, minY, w, h);
-    backdrop.update(w, h, far.y + (maxY - minY) * camera.zoom * 0.18, camera.x * camera.zoom * 0.2);
+    backdrop.update(w, h, far.y + (maxY - minY) * camera.zoom * 0.18, camera.x * camera.zoom * 0.2, viewAngle().horizon);
     effect.render(w, h);
   });
 }

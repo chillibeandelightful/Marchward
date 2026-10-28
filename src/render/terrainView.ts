@@ -2,7 +2,7 @@ import { Container, Graphics, Sprite } from 'pixi.js';
 import { hash2 } from '../sim/noise';
 import { heightAt, inBounds, stepBetween, terrainAt, type TerrainMap } from '../sim/terrain';
 import type { SpriteAssets, SpriteName } from './assets';
-import { isoToScreen } from './iso';
+import { isoToScreen, levelPx } from './iso';
 import { surfaceLevel, type Face, type Pt, type TileShape } from './tileGeometry';
 import { style } from './styles';
 import { shade } from './terrainStyle';
@@ -241,8 +241,8 @@ export class TerrainView {
     const { topA, topB, bottomA, bottomB } = f.levels;
     for (let lv = Math.ceil(Math.max(bottomA, bottomB)); lv < Math.min(topA, topB); lv++) {
       if (lv <= Math.max(bottomA, bottomB)) continue;
-      g.moveTo(a.x, a.y + (topA - lv) * LEVEL_PX)
-        .lineTo(b.x, b.y + (topB - lv) * LEVEL_PX)
+      g.moveTo(a.x, a.y + (topA - lv) * levelPx())
+        .lineTo(b.x, b.y + (topB - lv) * levelPx())
         .stroke({ width: 1, color: pal.strata, alpha: 0.8 });
     }
   }
@@ -288,8 +288,6 @@ export class TerrainView {
     return { x: p.sx, y: p.sy };
   }
 }
-
-const LEVEL_PX = isoToScreen(0, 0, 0).sy - isoToScreen(0, 0, 1).sy;
 
 const ROAD_LINKS = [
   [1, 0],
