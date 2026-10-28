@@ -1,4 +1,13 @@
-import type { VisualStyle } from './style';
+import type { Backdrop, VisualStyle } from './style';
+
+/** Overcast sky, grey hills and dun moorland beyond the site. */
+const SKY: Backdrop = {
+  skyTop: 0x34383f,
+  skyBottom: 0x6a6d70,
+  farHills: 0x50555b,
+  nearHills: 0x3d4135,
+  moor: 0x47452a,
+};
 
 /**
  * The look of early-'90s castle games: drab olive and brown land under an overcast sky, grey
@@ -73,13 +82,8 @@ export const CLASSIC: VisualStyle = {
     steam: 0xcfc8b4,
   },
   sprites: 'classic',
-  backdrop: {
-    skyTop: 0x34383f,
-    skyBottom: 0x6a6d70,
-    farHills: 0x50555b,
-    nearHills: 0x3d4135,
-    moor: 0x47452a,
-  },
+  backdrop: SKY,
+  horizon: SKY,
   retro: true,
   ui: 'classic',
 };

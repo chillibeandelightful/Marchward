@@ -1,4 +1,4 @@
-import { TILE_H, TILE_W } from './iso';
+import { viewAngle } from './iso';
 
 /**
  * The flat top-down plan view, used while placing castle pieces and troops. Plain maths here
@@ -23,12 +23,14 @@ export function wantsTopDown(tool: string, battle: 'deploy' | 'fight' | null): b
 
 /** Tile coordinates (fractional, at ground level 0) under a point of the isometric world. */
 export function isoToTile(sx: number, sy: number): { x: number; y: number } {
-  return { x: sy / TILE_H + sx / TILE_W, y: sy / TILE_H - sx / TILE_W };
+  const { tileW, tileH } = viewAngle();
+  return { x: sy / tileH + sx / tileW, y: sy / tileH - sx / tileW };
 }
 
 /** The isometric world point over fractional tile coordinates (x, y) at ground level 0. */
 export function tileToIso(x: number, y: number): { x: number; y: number } {
-  return { x: (x - y) * (TILE_W / 2), y: (x + y) * (TILE_H / 2) };
+  const { tileW, tileH } = viewAngle();
+  return { x: (x - y) * (tileW / 2), y: (x + y) * (tileH / 2) };
 }
 
 /** The top-down world point at the centre of tile (x, y), or at fractional tile coordinates. */

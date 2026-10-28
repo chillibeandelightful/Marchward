@@ -1,8 +1,10 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { kestrelFord } from '../src/data/sites/kestrelFord';
 import { Camera } from '../src/render/camera';
 import { frontDiagonal, pickPiece } from '../src/render/castleArt';
-import { isoToScreen } from '../src/render/iso';
+import { drawnLevels, isoToScreen, setViewAngle, viewAngle } from '../src/render/iso';
 import { buildTileShapes, pickTile, tileCorners } from '../src/render/tileGeometry';
 import { KEEP, WALL_THICKNESS } from '../src/data/castle';
 import { foundationOutline, TOWER_HALF } from '../src/render/foundation';
@@ -213,5 +215,65 @@ describe('planned foundation outlines', () => {
     const keep = foundationOutline({ kind: 'keep', x: 2, y: 2 }, () => null);
     const xs = keep.segments.flatMap(([x0, , x1]) => [x0, x1]);
     expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(KEEP.size - 0.1);
+  });
+});
+
+describe('view angle', () => {
+  const map = buildSite(kestrelFord);
+  const flatMap = mapFrom(Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => 1)));
+
+  it('holds the tile shape and height step in one place, and switches them', () => {
+    setViewAngle('high');
+    const high = viewAngle();
+    expect(high.tileH / high.tileW).not.toBe(0.5);
+    expect(isoToScreen(1, 0).sx - isoToScreen(0, 0).sx).toBe(high.tileW / 2);
+    expect(isoToScreen(0, 0, 0).sy - isoToScreen(0, 0, 1).sy).toBe(high.levelH);
+    expect(drawnLevels(2)).toBeGreaterThan(2);
+    setViewAngle('standard');
+    expect(isoToScreen(1, 1)).toEqual({ sx: 0, sy: 32 });
+    expect(drawnLevels(2)).toBe(2);
+  });
+
+  it('picks the tile at its own centre in High view, and converts to and from plan coordinates', () => {
+    setViewAngle('high');
+    try {
+      const shapes = buildTileShapes(map);
+      for (const s of shapes.filter((t) => t.x % 7 === 0 && t.y % 5 === 0)) {
+        const c = s.corners;
+        const p = isoToScreen(s.x, s.y, (c.n + c.e + c.s + c.w) / 4);
+        const hit = pickTile(shapes, p.sx, p.sy);
+        // Only land in front can hide it, and then the front tile is picked.
+        expect(hit).not.toBeNull();
+        expect((hit?.x ?? 0) + (hit?.y ?? 0)).toBeGreaterThanOrEqual(s.x + s.y);
+        if (hit?.x === s.x && hit.y === s.y) continue;
+        expect(heightAt(map, hit?.x ?? 0, hit?.y ?? 0)).toBeGreaterThan(s.level);
+      }
+      const iso = tileToIso(12.25, 40.5);
+      const t = isoToTile(iso.x, iso.y);
+      expect(t.x).toBeCloseTo(12.25);
+      expect(t.y).toBeCloseTo(40.5);
+    } finally {
+      setViewAngle('standard');
+    }
+  });
+
+  it('picks a castle piece by its taller High view walls', () => {
+    setViewAngle('high');
+    try {
+      const plan = createPlan(flatMap);
+      placePieces(flatMap, plan, [{ kind: 'tower', x: 4, y: 4, shape: 'square', height: 'low' }]);
+      const view = viewPlan(flatMap, plan);
+      // Above where a low tower's top would be in the Standard view, but within its drawn height here.
+      const p = isoToScreen(4.5, 4.5, 1 + 3);
+      const ground = pickTile(buildTileShapes(flatMap), p.sx, p.sy);
+      expect(pickPiece(view, p.sx, p.sy, ground ? ground.x + ground.y : 0)?.kind).toBe('tower');
+    } finally {
+      setViewAngle('standard');
+    }
+  });
+
+  it('is never seen by the sim', () => {
+    const dir = join(process.cwd(), 'src', 'sim');
+    for (const file of readdirSync(dir)) expect(readFileSync(join(dir, file), 'utf8'), file).not.toMatch(/render\//);
   });
 });

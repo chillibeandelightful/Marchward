@@ -13,7 +13,7 @@ import {
 } from '../sim/castle';
 import { heightAt, inBounds, NEIGHBOURS, stepBetween } from '../sim/terrain';
 import { hash2 } from '../sim/noise';
-import { isoToScreen, TILE_H, TILE_W } from './iso';
+import { drawnLevels, isoToScreen, viewAngle } from './iso';
 import { style, type Palette } from './styles';
 import { mix, shade } from './terrainStyle';
 import type { RowExtras } from './terrainView';
@@ -108,7 +108,7 @@ export class CastleArt implements RowExtras {
   /** Draw a piece; with `built` under 1 it stands that share of its height, without battlements. */
   drawPiece(g: Graphics, p: PieceSpec | Piece, pal: Palette, built = 1): void {
     const base = this.baseLevel(p) - SINK;
-    const full = Math.max(...footprint(p).map(([x, y]) => heightAt(this.view.map, x, y))) + pieceLevels(p);
+    const full = Math.max(...footprint(p).map(([x, y]) => heightAt(this.view.map, x, y))) + drawnLevels(pieceLevels(p));
     const finished = built >= 1;
     const top = finished ? full : base + (full - base) * Math.max(0.12, built);
     switch (p.kind) {
@@ -196,7 +196,7 @@ export class CastleArt implements RowExtras {
     const x1 = Math.max(...tiles.map(([x]) => x)) + 0.5;
     const y1 = Math.max(...tiles.map(([, y]) => y)) + 0.5;
     const base = this.baseLevel(p) - SINK;
-    const full = Math.max(...tiles.map(([x, y]) => heightAt(this.view.map, x, y))) + pieceLevels(p);
+    const full = Math.max(...tiles.map(([x, y]) => heightAt(this.view.map, x, y))) + drawnLevels(pieceLevels(p));
     const top = base + (full - base) * Math.max(0.12, built) + 0.5;
     const line = (ax: number, ay: number, al: number, bx: number, by: number, bl: number, width: number) =>
       g
@@ -473,8 +473,9 @@ function drawSquareTower(g: Graphics, x: number, y: number, r: number, base: num
 }
 
 function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: number, top: number, pal: Palette, finished: boolean, slits: boolean): void {
-  const rx = (r * TILE_W) / Math.SQRT2;
-  const ry = (r * TILE_H) / Math.SQRT2;
+  const { tileW, tileH } = viewAngle();
+  const rx = (r * tileW) / Math.SQRT2;
+  const ry = (r * tileH) / Math.SQRT2;
   const c0 = isoToScreen(x, y, base);
   const c1 = isoToScreen(x, y, top);
   const arc = (cy: number, from: number, to: number) => {
@@ -605,7 +606,7 @@ export function pickPiece(view: PlanView, px: number, py: number, groundDiagonal
     if (d <= bestDiagonal) continue;
     const tiles = footprint(p);
     const base = Math.min(...tiles.map(([x, y]) => heightAt(view.map, x, y)));
-    const top = Math.max(...tiles.map(([x, y]) => heightAt(view.map, x, y))) + pieceLevels(p);
+    const top = Math.max(...tiles.map(([x, y]) => heightAt(view.map, x, y))) + drawnLevels(pieceLevels(p));
     const x0 = Math.min(...tiles.map(([x]) => x)) - 0.5;
     const y0 = Math.min(...tiles.map(([, y]) => y)) - 0.5;
     const x1 = Math.max(...tiles.map(([x]) => x)) + 0.5;

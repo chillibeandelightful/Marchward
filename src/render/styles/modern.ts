@@ -71,6 +71,13 @@ export const MODERN: VisualStyle = {
   },
   sprites: 'modern',
   backdrop: null,
+  horizon: {
+    skyTop: 0x6f8fa8,
+    skyBottom: 0xc4d2d8,
+    farHills: 0x8aa0aa,
+    nearHills: 0x5d7d4c,
+    moor: 0x5f8a3e,
+  },
   retro: false,
   ui: 'modern',
 };
