@@ -22,7 +22,7 @@ export function parseLook(text: string | null): Look {
     // Unreadable: use the defaults.
   }
   return {
-    style: raw.style === 'classic' || raw.style === 'modern' ? raw.style : DEFAULT_LOOK.style,
+    style: raw.style === 'classic' || raw.style === 'modern' || raw.style === 'drab' ? raw.style : DEFAULT_LOOK.style,
     pixel: raw.pixel === 1 || raw.pixel === 2 || raw.pixel === 3 ? raw.pixel : DEFAULT_LOOK.pixel,
     dither: raw.dither === 0 || raw.dither === 0.5 || raw.dither === 1 ? raw.dither : DEFAULT_LOOK.dither,
   };

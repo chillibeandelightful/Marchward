@@ -27,6 +27,14 @@ describe('visual styles', () => {
     expect(STYLES.classic.retro).toBe(true);
   });
 
+  it('keep Drab as Classic drawn smooth: same colours and frame, no screen effect', () => {
+    expect(STYLES.drab.retro).toBe(false);
+    expect(STYLES.drab.ui).toBe('classic');
+    expect(STYLES.drab.terrain).toBe(STYLES.classic.terrain);
+    expect(STYLES.drab.castle).toBe(STYLES.classic.castle);
+    expect(parseLook('{"style":"drab"}').style).toBe('drab');
+  });
+
   it('are never seen by the sim or kept in saves', () => {
     const dir = join(process.cwd(), 'src', 'sim');
     for (const file of readdirSync(dir)) expect(readFileSync(join(dir, file), 'utf8'), file).not.toMatch(/styles/);

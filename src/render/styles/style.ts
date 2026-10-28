@@ -2,7 +2,7 @@ import type { TerrainId } from '../../data/terrain';
 import type { WorkerType } from '../../data/economy';
 import type { FaceKind } from '../tileGeometry';
 
-export type StyleId = 'modern' | 'classic';
+export type StyleId = 'modern' | 'classic' | 'drab';
 
 /** Colours for one castle piece. Plain stone, or tinted for previews and problems. */
 export interface Palette {

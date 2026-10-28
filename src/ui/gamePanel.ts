@@ -45,7 +45,7 @@ const KEYS_HELP = [
   'Space pauses or starts the clock · V shows the land as planned',
   'Right-drag, or WASD / arrow keys, to move · mouse wheel or + / − to zoom',
   '1–9, 0 pick a tool · R turns the gatehouse · Esc cancels',
-  'C recentres · G shows the grid · L switches between Modern and Classic',
+  'C recentres · G shows the grid · L steps through Modern, Classic and Drab',
 ];
 
 function describe(file: SaveFile | null | string): string {
@@ -134,10 +134,11 @@ export class GamePanel {
     ];
     s.append(
       el('strong', undefined, 'Look'),
-      el('div', 'dim', 'Classic is darker and grittier, with chunky pixels and a frame of icons. Press L to switch at any time.'),
+      el('div', 'dim', 'Classic is darker and grittier, with chunky pixels and a frame of icons. Drab has the same colours and frame, drawn smooth. Press L to step through them.'),
       row('Style', [
         ['Modern', { style: 'modern' }],
         ['Classic', { style: 'classic' }],
+        ['Drab', { style: 'drab' }],
       ]),
       ...this.classicOnly,
     );

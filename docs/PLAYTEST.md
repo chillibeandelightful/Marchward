@@ -85,6 +85,8 @@ After each milestone, add a section:
 - **Check Modern still works** exactly as before (fire and smoke now appear there too).
 - **The questions for this milestone:** does Classic feel like the look you remember? Is switching styles quick, and does everything still read clearly in both?
 **Known issues:** the sky and hills only show when you zoom out far enough to see past the far edge of the site. Raiders battering the back walls are hidden behind them (the view doesn't rotate). Procedural art gets the palette, frame and pixel feel of the mockups but not their painted detail. The banner is a plain gold tower on red until heraldry arrives in a later milestone.
+**Feedback:** Approved: an improvement, but zoomed out the chunky pixels are too much, and the dithering puts a repeating pattern over the whole map and every piece. Keep the drab colours; work towards the reference pictures with real art assets in future. Asked for a third style without the pixelation, added as **Drab** (Classic's colours, stone and frame, drawn smooth).
+
 
 ## Follow-up – Top-down view for placing (2026-10-27)
 **Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
