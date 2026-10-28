@@ -17,7 +17,7 @@ import { pieceProgress, summariseWorks, type WorksSummary } from './sim/works';
 import { ProceduralAssets } from './render/assets';
 import { Backdrop } from './render/backdrop';
 import { ScreenEffect } from './render/screenEffect';
-import { setStyle, style } from './render/styles';
+import { setStyle, STYLE_ORDER, style } from './render/styles';
 import { buildPalette } from './render/styles/palette';
 import { ClassicFrame } from './ui/classicFrame';
 import { loadLook, storeLook, type Look } from './ui/look';
@@ -356,7 +356,7 @@ async function start(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyV') forcePlanned = !forcePlanned;
     else if (e.code === 'KeyT') topDownAllowed = !topDownAllowed;
-    else if (e.code === 'KeyL') applyLook({ ...look, style: look.style === 'classic' ? 'modern' : 'classic' });
+    else if (e.code === 'KeyL') applyLook({ ...look, style: STYLE_ORDER[(STYLE_ORDER.indexOf(look.style) + 1) % STYLE_ORDER.length] ?? 'modern' });
   });
   window.addEventListener('resize', () => frame.relayout());
   const hud = new Hud(readoutEl);
