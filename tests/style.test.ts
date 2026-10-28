@@ -89,8 +89,9 @@ describe('look settings', () => {
     expect(parseLook('{"style":"classic","pixel":2,"dither":0.5}')).toEqual({ style: 'classic', view: 'standard', pixel: 2, dither: 0.5, surfaces: false });
   });
 
-  it('keep the view to Standard or High view', () => {
+  it('keep the view to Standard, High view or Low view', () => {
     expect(parseLook('{"view":"high"}').view).toBe('high');
+    expect(parseLook('{"view":"low"}').view).toBe('low');
     expect(parseLook('{"view":"sideways"}').view).toBe('standard');
   });
 });

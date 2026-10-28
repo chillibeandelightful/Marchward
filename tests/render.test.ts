@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { kestrelFord } from '../src/data/sites/kestrelFord';
 import { Camera } from '../src/render/camera';
 import { frontDiagonal, pickPiece } from '../src/render/castleArt';
-import { drawnLevels, isoToScreen, setViewAngle, viewAngle } from '../src/render/iso';
+import { drawnLevels, isoToScreen, setViewAngle, setViewTuning, viewAngle, VIEWS } from '../src/render/iso';
+import { parseTuning } from '../src/ui/tunePanel';
 import { buildTileShapes, pickTile, tileCorners } from '../src/render/tileGeometry';
 import { KEEP, WALL_THICKNESS } from '../src/data/castle';
 import { foundationOutline, TOWER_HALF } from '../src/render/foundation';
@@ -275,5 +276,29 @@ describe('view angle', () => {
   it('is never seen by the sim', () => {
     const dir = join(process.cwd(), 'src', 'sim');
     for (const file of readdirSync(dir)) expect(readFileSync(join(dir, file), 'utf8'), file).not.toMatch(/render\//);
+  });
+});
+
+describe('view tuning', () => {
+  it('lays tuned numbers over the active preset, and resets to it', () => {
+    setViewAngle('low');
+    setViewTuning({ low: { tileH: 30, structureScale: 2 } });
+    expect(viewAngle()).toMatchObject({ id: 'low', tileH: 30, structureScale: 2, levelH: VIEWS.low.levelH });
+    expect(isoToScreen(1, 1).sy).toBe(30);
+    setViewTuning({});
+    expect(viewAngle().tileH).toBe(VIEWS.low.tileH);
+    setViewAngle('standard');
+    expect(viewAngle()).toEqual(VIEWS.standard);
+  });
+
+  it('keeps the Low view flatter than Standard, with walls drawn taller', () => {
+    expect(VIEWS.low.tileH / VIEWS.low.tileW).toBeLessThan(0.5);
+    expect(VIEWS.low.structureScale).toBeGreaterThan(1);
+  });
+
+  it('reads stored tuning, dropping unknown views and numbers out of range', () => {
+    expect(parseTuning('{"low":{"tileH":20,"levelH":99,"bogus":1},"sideways":{"tileH":20}}')).toEqual({ low: { tileH: 20 } });
+    expect(parseTuning('not json')).toEqual({});
+    expect(parseTuning(null)).toEqual({});
   });
 });
