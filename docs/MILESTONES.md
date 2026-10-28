@@ -58,6 +58,28 @@ A trial of the reference mockups' high-angle three-quarter view, staying with fl
 - Not in this milestone: true perspective (things getting smaller further away), camera rotation, new art.
 - **Playtest:** does High view look closer to the mockups and feel better to play than Standard? Can you still read heights, pick tiles and place pieces accurately? If not, we keep Standard.
 
+## M5c – Hand-made art (first pass)
+Drawn art in the spirit of the two reference mockups: painted stone blocks, dark pines, chunky figures and a muddy, olive moorland. It replaces the procedural shapes in the drab styles one piece at a time. It comes after M5b, because the art has to be drawn for the camera angle and structure heights that M5b settles. It lands in two PRs: the pipeline with castle stone and trees first, then figures and effects.
+- **Who draws it (decided 2026-10-28):** Claude draws a complete first set as original, hand-placed pixel files to the spec. Any piece can later be replaced by better art (an artist's, or made with an image tool) dropped in to the same spec, with no code changes.
+- **Art pipeline:** sprite sheets as PNG files under `public/art/` with a JSON manifest for each sheet. The manifest gives every frame's rectangle, its anchor point (where it meets the ground) and its variants. They load at start-up through Pixi's asset loader, behind the existing `SpriteAssets` interface, which grows to cover castle pieces, figures and effects as well as trees and rocks. Any sprite without art falls back to today's procedural drawing, so art can arrive bit by bit and the game always runs.
+- **Where it shows:** a new **Painted** style in the Look section, with Drab's colours and frame, using the drawn art wherever it exists. Modern, Classic and Drab stay as they are. It is not part of saved games, and the sim never sees it.
+- **Art spec** (`docs/ART.md`): pixel sizes at zoom 1 for each kind of sprite. A tile is 64×32 today; M5b may change the angle. It also covers:
+  - anchor points;
+  - light from the upper left;
+  - a dark outline on the shadow side;
+  - the Drab palette as the colour guide;
+  - how files are named and laid out.
+  `npm run art:templates` writes template PNGs with the tile diamond, the height steps and the anchor marked, so drawn art lines up first time.
+- **Art viewer:** a development page (`?art`) that lays out every sprite and its variants on a test plot. It also shows the frames of each animation, in Painted and Drab side by side, so new art can be checked without playing.
+- **First pass, in priority order** (what the mockups show most):
+  1. **Castle stone:** wall sections for every way a wall can join (end, straight, corner, T, cross), at each height and thickness, with battlements. Square and round towers, the gatehouse with portcullis on both axes, and the keep. Building stages (lower courses with timber scaffolding), and rubble for a breached piece.
+  2. **Trees and ground cover:** pines and oaks in 4 to 6 variants each, boulders, stones, reeds, heather and bracken.
+  3. **Ground:** textured fills for each terrain type, with several variants so the map doesn't repeat. Rock faces for cliffs and banks, and a muddy road.
+  4. **Figures:** each worker trade, swordsmen, archers and raiders. Frames for standing, walking (4), working or fighting (2 to 4) and shooting, with one facing drawn and the other mirrored. Carters with hand-carts.
+  5. **Camp and effects:** tents, stone and timber piles, carts, and the banner on the keep. Animated fire, smoke and dust frames.
+- **Not in this milestone:** the UI frame (it stays drawn in code), heraldry and banners on troops (M9), seasonal versions (M9), burning buildings, and units that don't exist yet.
+- **Playtest:** side by side with the mockups, does Painted feel like the castle game you remember? Do pieces and figures still read clearly at every zoom? Which pieces most need another pass?
+
 ## M6 – Siege depth
 - Sappers, ladder crews, moats.
 - Drawbridge: a gatehouse facing a moat gets a drawbridge, raised with the gate shut and lowered for sorties.
@@ -89,7 +111,7 @@ A trial of the reference mockups' high-angle three-quarter view, staying with fl
 ## Stretch
 - Legend mode: event set plus goblins, trolls, bog wights.
 - Expanded units: spearmen, crossbowmen, knights, rams, siege towers.
-- Hand-made or commissioned art replacing procedural sprites.
+- Further art passes after M5c: seasonal sets, more units, a full painted terrain set.
 
 ## Backlog (ideas, not yet scheduled)
 Ideas from playtesting to fold into a milestone later. Nothing here is built until it's scheduled.
