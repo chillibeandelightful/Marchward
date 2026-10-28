@@ -102,6 +102,13 @@ export class TerrainView {
     return row.actors;
   }
 
+  /** The layers holding small things (trees, rocks, figures, fire) rather than ground and stone. */
+  detailLayers(): Container[] {
+    const out: Container[] = [this.hover];
+    for (const r of this.rows) if (r) out.push(r.sprites, r.actors);
+    return out;
+  }
+
   clearActors(): void {
     for (const d of this.usedActors) this.rows[d]?.actors.clear();
     this.usedActors.clear();
