@@ -60,6 +60,8 @@ A trial of the reference mockups' high-angle three-quarter view, staying with fl
 
 ## M6 – Siege depth
 - Sappers, ladder crews, moats.
+- Drawbridge: a gatehouse facing a moat gets a drawbridge, raised with the gate shut and lowered for sorties.
+- Wider gatehouses and more than one gate (see Backlog).
 - Smarter enemy approach (weak points, varied directions).
 - Sieges with food on both sides.
 - Commander control mode.
@@ -98,6 +100,7 @@ A wall section now and then gives way on its own, outside battle. Mostly a rando
 - Fair warning: a crack shows on the piece and a line goes in the log some days before it falls, so the player can put masons on it. Repairing it in time stops the collapse.
 - A collapse drops the piece to rubble (as a breach does after battle) and it has to be rebuilt.
 - Rolled on the seeded RNG once a month, with the chances in `src/data/`, so it stays reproducible and tunable. Rare: a few times a campaign, not every season.
+- Free-standing pieces (see *Freer castle designing* below) are the extreme case: a lone wall tile with two free ends should be the likeliest thing on the site to fall.
 - Suggested slot: M7, as one of the first events through the new event system. The support check (free ends, tower spacing) could also feed the M6 enemy weak-point choice.
 
 ### Smarter build order
@@ -110,6 +113,32 @@ Options:
 
 Agreed (playtester, 2026-10-27): **B with towers ahead of walls at each step**, plus the "build this next" click. It fixes the corners, makes the castle rise in a believable order whether it is laid out all at once or piece by piece, and fits wall collapse above, since connected building leaves few free ends. If it turns out too clever in play, A on its own is the fallback.
 - Suggested slot: a small follow-up any time; it touches only the job order in `works.ts` and its tests.
+
+### Gate sorties and archer sight lines (priority)
+Playtest bug (2026-10-28): once the walls are closed, your swordsmen stand inside being shot by raider archers who shoot straight through the walls, and never go out to meet them. Swordsmen can already walk through the gatehouse; the trouble is that they only chase raiders within a few tiles of their post (`guardRadius` in `src/data/combat.ts`), so archers further off are ignored, and bows on both sides ignore walls entirely, so anyone in range can be hit. The gate is also never drawn opening.
+- **Sorties:** swordsmen go out through the gate after raiders outside, especially raider archers shooting into the castle, and come back in when the raiders are beaten or they're badly outnumbered. The gate is drawn opening as they pass and shutting behind them, as `DESIGN.md` already promises. Raiders can't slip in while it stands open for a moment; if that proves too generous, an open gate can count as a weak point later.
+- **Sight lines, both ways:** a shot needs a clear line from shooter to target, worked out on the tile grid in the sim (no need to draw it). A wall or tower between them blocks the shot unless the shooter stands high enough to shoot over it, or is lobbing in a high arc at a target well beyond the wall, with lower accuracy. Archers on the walls shoot out freely; raider archers at the foot of a wall can't hit swordsmen tucked in behind it. Forest already partly blocks sight in `DESIGN.md` and can use the same check.
+- Suggested slot: **next**, as a combat follow-up before M5b. Touches `src/sim/battle.ts` and its tests (a sortie through a closed curtain, a blocked shot, a shot over a low wall from a tower).
+
+### Oil cauldrons tended by peasants
+A cauldron shouldn't need a soldier posted to it. Each one comes with one of the king's peasants who heats and tips it, so it pours on its own when raiders reach the foot of the piece. The peasant isn't a fighting unit and can't be posted elsewhere; if the piece falls, the cauldron is lost with it.
+- Suggested slot: alongside the gate fix (same file), since it's small. Change the Extras note in `src/data/combat.ts` and the "needs an archer" rule in `battle.ts`.
+
+### Gatehouses: three tiles wide, and more than one
+- The gatehouse becomes 3 tiles wide across the passage (a wider front with towers either side of the arch), passage still one tile, so it reads as a real gatehouse next to 1-tile walls. Its footings, cost and HP grow to match.
+- A castle can have more than one gatehouse: a front and back entrance, or a gate in each ring of walls. At least one is still needed to finish a site. Enclosure checks treat every gate as shut; sorties use whichever gate is nearest the enemy.
+- Saves with today's 1-tile gatehouse need an upgrade step (keep it as a narrow gate, or widen it where there's room).
+- Suggested slot: M6, with drawbridges and the smarter enemy approach, since gates become weak points worth choosing.
+
+### Freer castle designing: diagonal walls and free-standing pieces
+- **Diagonal walls:** walls can be laid corner to corner as well as edge to edge, so a curtain can run at 45°. Towers, the gatehouse and the keep stay square to the grid. A diagonal pair must still block walking between its corners (no slipping through the gap), and drawing, footings and enclosure need to handle the joins.
+- **Free placement:** walls and towers no longer have to join the existing curtain. A tower can go anywhere, and a lone wall tile can stand on its own. The cost is risk, not a rule: a piece with free ends or no tower nearby is shown as poorly supported before you place it, and it's much more prone to collapse (see *Wall collapse* above, which already weights the chance by free ends and tower spacing). The plan panel keeps warning about a split curtain.
+- Suggested slot: a designer follow-up after the gate fix. The support warning can show from the start; the collapse itself arrives with the wall collapse event in M7.
+
+### Second camera view from the far side
+Raiders come from any edge, and today you can't see what's going on behind the castle. Add a second fixed view looking from the opposite side, with one key or button to swap between the two. No free rotation and no other angles.
+- The sim doesn't change. Render flips the projection and depth order and draws the pieces' back faces (the gatehouse arch, keep turrets and so on need a far-side drawing); tile picking and the camera follow the active view. The top-down planning view is unaffected.
+- Suggested slot: M5b, which already moves the projection settings into one place, or straight after it. It would need M5b's "no camera rotation" line to allow two fixed views.
 
 ## Progress log
 Update as milestones complete.
