@@ -75,6 +75,17 @@ describe('look settings', () => {
   });
 
   it('read back what was stored', () => {
-    expect(parseLook(JSON.stringify({ style: 'classic', pixel: 3, dither: 0.5 }))).toEqual({ style: 'classic', pixel: 3, dither: 0.5 });
+    expect(parseLook(JSON.stringify({ style: 'classic', pixel: 3, dither: 0.5, surfaces: true }))).toEqual({ style: 'classic', pixel: 3, dither: 0.5, surfaces: true });
+  });
+
+  it('take any dither strength from off to full, in 5% steps', () => {
+    expect(parseLook('{"dither":0.3}').dither).toBe(0.3);
+    expect(parseLook('{"dither":0.33}').dither).toBe(0.35);
+    expect(parseLook('{"dither":1.5}').dither).toBe(DEFAULT_LOOK.dither);
+    expect(parseLook('{"dither":-0.2}').dither).toBe(DEFAULT_LOOK.dither);
+  });
+
+  it('keep settings stored before the strength slider and surfaces toggle', () => {
+    expect(parseLook('{"style":"classic","pixel":2,"dither":0.5}')).toEqual({ style: 'classic', pixel: 2, dither: 0.5, surfaces: false });
   });
 });

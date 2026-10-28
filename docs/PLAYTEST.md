@@ -87,6 +87,12 @@ After each milestone, add a section:
 **Known issues:** the sky and hills only show when you zoom out far enough to see past the far edge of the site. Raiders battering the back walls are hidden behind them (the view doesn't rotate). Procedural art gets the palette, frame and pixel feel of the mockups but not their painted detail. The banner is a plain gold tower on red until heraldry arrives in a later milestone.
 **Feedback:** Approved: an improvement, but zoomed out the chunky pixels are too much, and the dithering puts a repeating pattern over the whole map and every piece. Keep the drab colours; work towards the reference pictures with real art assets in future. Asked for a third style without the pixelation, added as **Drab** (Classic's colours, stone and frame, drawn smooth).
 
+**Follow-up – softer dithering (2026-10-28):** Classic's screen effect can now be dialled down. In Game → Look with Classic chosen:
+- **Pixels: Off** keeps everything sharp when zoomed out, with Classic's palette and dithering still on.
+- **Dithering** is a slider from off to 100% (it was Off, Light or Full).
+- **Dither only the ground, stone and sky** leaves trees, people, fire and smoke exactly as drawn (so trees keep their greens), and puts the dithered texture only on the big surfaces.
+- Try Pixels Off, dithering around 40–60%, with the surfaces box ticked, then zoom in and out. Your settings are remembered when you reload.
+
 
 ## Follow-up – Top-down view for placing (2026-10-27)
 **Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)

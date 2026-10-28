@@ -120,6 +120,7 @@ async function start(): Promise<void> {
   const scene = new Container();
   scene.addChild(backdrop.root, world);
   const effect = new ScreenEffect(app.renderer, app.stage, scene);
+  effect.details = () => [...terrain.detailLayers(), sky, ghosts];
   // The flat plan, shown instead of the isometric world (and its backdrop) while placing pieces or troops.
   const plan = new TopDownView();
   plan.root.visible = false;
@@ -259,7 +260,7 @@ async function start(): Promise<void> {
     const s = style();
     document.body.classList.toggle('classic', s.ui === 'classic');
     app.renderer.background.color = s.background;
-    effect.configure(s.retro, look.pixel, look.dither, palette());
+    effect.configure(s.retro, look.pixel, look.dither, look.surfaces, palette());
     gamePanel.showLook();
     if (!restyled) return;
     frame.relayout();
@@ -305,7 +306,7 @@ async function start(): Promise<void> {
     frame.update(sim, topEl.getBoundingClientRect().bottom);
     app.resize();
   }
-  effect.configure(style().retro, look.pixel, look.dither, palette());
+  effect.configure(style().retro, look.pixel, look.dither, look.surfaces, palette());
 
   const minX = Math.min(...shapes.map((s) => s.minX));
   const minY = Math.min(...shapes.map((s) => s.minY));

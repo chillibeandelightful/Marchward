@@ -106,7 +106,7 @@ export class GamePanel {
     this.refresh();
   }
 
-  /** Style buttons, and for Classic how chunky the pixels are and how much dithering. Kept in this browser, not in saves. */
+  /** Style buttons, and for Classic how chunky the pixels are, how strong the dithering is and where it goes. Kept in this browser, not in saves. */
   private lookSection(): HTMLElement {
     const s = el('section');
     const row = (label: string, options: readonly [string, Partial<Look>][]) => {
@@ -120,17 +120,26 @@ export class GamePanel {
       }
       return r;
     };
+    const strength = el('div', 'option-row');
+    this.ditherSlider.type = 'range';
+    this.ditherSlider.min = '0';
+    this.ditherSlider.max = '100';
+    this.ditherSlider.step = '5';
+    this.ditherSlider.addEventListener('input', () => this.looks.setLook({ ...this.looks.look, dither: Number(this.ditherSlider.value) / 100 }));
+    strength.append(el('span', undefined, 'Dithering'), this.ditherSlider, this.ditherValue);
+    this.surfacesBox.type = 'checkbox';
+    this.surfacesBox.addEventListener('change', () => this.looks.setLook({ ...this.looks.look, surfaces: this.surfacesBox.checked }));
+    const surfaces = el('label', 'levy');
+    surfaces.append(this.surfacesBox, ' Dither only the ground, stone and sky (trees, people and fire are left as drawn)');
     this.classicOnly = [
       row('Pixels', [
-        ['Fine', { pixel: 1 }],
+        ['Off', { pixel: 1 }],
         ['Chunky', { pixel: 2 }],
         ['Chunkier', { pixel: 3 }],
       ]),
-      row('Dithering', [
-        ['Off', { dither: 0 }],
-        ['Light', { dither: 0.5 }],
-        ['Full', { dither: 1 }],
-      ]),
+      el('div', 'dim', 'Pixels off keeps everything sharp when zoomed out, with the same colours and dithering.'),
+      strength,
+      surfaces,
     ];
     s.append(
       el('strong', undefined, 'Look'),
@@ -147,12 +156,18 @@ export class GamePanel {
   }
 
   private classicOnly: HTMLElement[] = [];
+  private readonly ditherSlider = el('input');
+  private readonly ditherValue = el('span', 'dim');
+  private readonly surfacesBox = el('input');
 
   /** Mark the chosen look's buttons; the screen-effect rows only apply to Classic. */
   showLook(): void {
     const look = this.looks.look;
     for (const { b, on } of this.lookRows) setClass(b, on(look) ? 'active' : '');
     for (const r of this.classicOnly) r.style.display = look.style === 'classic' ? '' : 'none';
+    this.ditherSlider.value = String(Math.round(look.dither * 100));
+    setText(this.ditherValue, look.dither === 0 ? 'off' : `${Math.round(look.dither * 100)}%`);
+    this.surfacesBox.checked = look.surfaces;
   }
 
   private load(slot: Slot): void {
