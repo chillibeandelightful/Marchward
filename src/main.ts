@@ -26,7 +26,8 @@ import { loadLook, storeLook, type Look } from './ui/look';
 import { Camera } from './render/camera';
 import { CastleArt, pickPiece } from './render/castleArt';
 import { drawnLevels, isoToScreen, setViewAngle, setViewTuning, viewAngle, VIEW_ORDER } from './render/iso';
-import { loadTuning, TunePanel } from './ui/tunePanel';
+import { loadLight, loadTuning, TunePanel } from './ui/tunePanel';
+import { setLight } from './render/lighting';
 import { buildTileShape, buildTileShapes, pickTile, surfaceLevel, type TileShape } from './render/tileGeometry';
 import { TerrainView } from './render/terrainView';
 import { isoToTile, pickPlanTile, PLAN_TILE, planToTile, tileToIso, tileToPlan, wantsTopDown } from './render/topDown';
@@ -63,6 +64,8 @@ async function start(): Promise<void> {
   const tuning = loadTuning();
   setViewTuning(tuning);
   setViewAngle(look.view);
+  const light = loadLight();
+  setLight(light);
   document.body.classList.toggle('classic', style().ui === 'classic');
 
   const app = new Application();
@@ -308,7 +311,15 @@ async function start(): Promise<void> {
     terrain.setHover(hovered);
   }
 
-  const tunePanel = new TunePanel(tuning, (t) => reangle(() => setViewTuning(t)));
+  const tunePanel = new TunePanel(
+    tuning,
+    (t) => reangle(() => setViewTuning(t)),
+    light,
+    (l) => {
+      setLight(l);
+      refresh('all');
+    },
+  );
   const reportView = new ReportView(reportEl);
   const defencePanel = new DefencePanel(tabs.pages.defence, game, {
     postTroops: () => designer.setTool('troops'),

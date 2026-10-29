@@ -10,6 +10,7 @@ import { heightAt } from '../sim/terrain';
 import { pieceProgress } from '../sim/works';
 import { drawnLevels, isoToScreen } from './iso';
 import { drawArt, frameAt, paintedFrames, type Pose } from './paintedArt';
+import { groundShadow } from './lighting';
 import { style } from './styles';
 import { drawBattleFire, drawBreachSmoke, drawDust } from './effectsArt';
 import type { ActorHost } from './workersArt';
@@ -106,7 +107,7 @@ export function drawSoldier(
   const pose: Pose = act === 'walk' ? 'walk' : act === 'shoot' ? 'shoot' : act === 'stand' ? 'stand' : UNITS[type].bow ? 'stand' : 'fight';
   const painted = paintedFrames(`${type}.${pose}`);
   if (painted) {
-    if (!onWall) g.ellipse(sx, sy, 4.5, 1.8).fill({ color: 0x000000, alpha: 0.25 });
+    if (!onWall) groundShadow(g, sx, sy, 4.5, 1.8, 20);
     drawArt(g, frameAt(painted, t, pose === 'walk' ? 5 : act === 'batter' ? 4 : 6), sx, sy, { flip: left });
     if (health < 0.999) {
       g.rect(sx - 5, sy - 25, 10, 1.6).fill({ color: 0x000000, alpha: 0.6 });
@@ -122,7 +123,7 @@ export function drawSoldier(
   const step = walking ? Math.sin(t * 4.5) * 1.4 : 0;
   // Drawn round (0, 0) at the feet, scaled up for chunkier figures.
   g.setTransform(f.scale, 0, 0, f.scale, sx, sy);
-  if (!onWall) g.ellipse(0, 0, 3.5, 1.5).fill({ color: 0x000000, alpha: 0.25 });
+  if (!onWall) groundShadow(g, 0, 0, 3.5, 1.5, 12 / f.scale);
   const top = -10.5;
   const body = defender ? f.tabard : f.raider;
   if (f.outline !== null) {

@@ -6,6 +6,8 @@ import type { SimState } from '../sim/state';
 import { flames } from './effectsArt';
 import { isoToScreen } from './iso';
 import { drawArt, frameAt, paintedFrames } from './paintedArt';
+import { castOffset, groundShadow, lightSettings, SHADOW_COLOUR } from './lighting';
+import { circle, convexHull } from './shadows';
 import { style } from './styles';
 
 // Tunic colours (one per trade, so they can be told apart on site) and the rest come from the active style.
@@ -116,7 +118,7 @@ function drawFigure(host: ActorHost, x: number, y: number, type: WorkerType, t: 
   const painted = paintedFrames(`${type}.${busy ? 'work' : 'sit'}`);
   if (painted) {
     // Each keeps to one facing, picked from where they stand.
-    g.ellipse(o.sx, o.sy, 4.5, 1.8).fill({ color: 0x000000, alpha: 0.25 });
+    groundShadow(g, o.sx, o.sy, 4.5, 1.8, busy ? 20 : 12);
     drawArt(g, frameAt(painted, t, type === 'mason' || type === 'carpenter' ? 6 : 4), o.sx, o.sy, { flip: hash2(Math.round(x * 10), Math.round(y * 10), 3) < 0.5 });
     return;
   }
@@ -126,7 +128,7 @@ function drawFigure(host: ActorHost, x: number, y: number, type: WorkerType, t: 
   const bend = busy && (type === 'digger' || type === 'labourer') ? Math.max(0, swing) * 2 : 0;
   // Drawn round (0, 0) at the feet, scaled up for chunkier figures.
   g.setTransform(f.scale, 0, 0, f.scale, o.sx, o.sy);
-  g.ellipse(0, 0, 3.5, 1.5).fill({ color: 0x000000, alpha: 0.25 });
+  groundShadow(g, 0, 0, 3.5, 1.5, (busy ? 12 : 8) / f.scale);
   const top = busy ? -10 + bend : -7;
   const height = busy ? 6.5 : 5.5;
   if (f.outline !== null) {
@@ -162,7 +164,7 @@ function drawCarter(host: ActorHost, x: number, y: number, t: number, loaded: bo
   const walk = paintedFrames('carter.walk');
   const barrow = paintedFrames(loaded ? 'cartLoaded' : 'cart');
   if (walk && barrow) {
-    g.ellipse(o.sx + 6, o.sy, 9, 2.4).fill({ color: 0x000000, alpha: 0.22 });
+    groundShadow(g, o.sx + 6, o.sy, 9, 2.4, 14);
     // The carter pushes the cart ahead, both facing the same way.
     drawArt(g, barrow[0] as NonNullable<(typeof barrow)[0]>, o.sx + 4, o.sy);
     drawArt(g, frameAt(walk, t, 6), o.sx, o.sy);
@@ -171,7 +173,7 @@ function drawCarter(host: ActorHost, x: number, y: number, t: number, loaded: bo
   const f = style().figures;
   const step = Math.sin(t * 8) * 1.2;
   g.setTransform(f.scale, 0, 0, f.scale, o.sx, o.sy);
-  g.ellipse(4, 0, 7, 2.2).fill({ color: 0x000000, alpha: 0.22 });
+  groundShadow(g, 4, 0, 7, 2.2, 8 / f.scale);
   const ink = f.outline !== null ? { width: 1, color: f.outline } : null;
   const cart = g.rect(2, -6, 9, 4).fill(0x6e5232);
   if (ink) cart.stroke(ink);
@@ -248,7 +250,16 @@ function drawPaintedCamp(host: ActorHost, sim: SimState, cx: number, cy: number,
     ] as const
   ).forEach(([dx, dy], i) => {
     const o = at(host, cx + dx, cy + dy);
-    if (o) drawArt(o.g, tents[i % tents.length] as (typeof tents)[0], o.sx, o.sy);
+    if (!o) return;
+    const tent = tents[i % tents.length] as (typeof tents)[0];
+    // The tent's shadow: its footing on the ground drawn out to where its peak falls.
+    const half = tent.texture.frame.width * 0.42;
+    const peak = castOffset(tent.texture.frame.height * 0.9);
+    const strength = lightSettings().shadow;
+    const footing = circle(0, 0, 1, 12).map((p) => ({ x: o.sx + p.x * half, y: o.sy - 3 + p.y * 5 }));
+    const shape = convexHull([...footing, { x: o.sx + peak.x, y: o.sy - 3 + peak.y }]);
+    if (strength > 0) o.g.poly(shape.flatMap((p) => [p.x, p.y])).fill({ color: SHADOW_COLOUR, alpha: strength });
+    drawArt(o.g, tent, o.sx, o.sy);
   });
   const hearth = at(host, cx + 0.15, cy + 1.2);
   if (hearth) {

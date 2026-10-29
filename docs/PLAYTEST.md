@@ -155,3 +155,13 @@ After each milestone, add a section:
 - **The art viewer** (`?art`) now shows every person in every pose, the camp and effects, and the ground textures.
 - **The questions:** do the people read clearly at your usual zoom? Is the ground too busy or too plain? Which pieces most need another pass?
 **Known issues:** cliffs, banks, the road's ruts, rubble and the keep's banner are still drawn in code. Each worker faces one way while working. The marsh pattern repeats visibly when zoomed far out.
+
+## Sun lighting and shadows (2026-10-29)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- Pick **Painted** and **Low view**, and build or load a castle. The whole scene is now lit by one sun, up and to the left of the view.
+- **The stone:** wall and tower faces turned to the left are lighter and slightly warm; faces turned to the right are darker and slightly cool. Round towers shade smoothly round the curve. Battlement tops and tower roofs are bright, and the merlons cast small shadows across the wall walk. Arrow slits and the gate passage are near black, with a sliver of light inside slits on the right-hand faces.
+- **Cast shadows:** towers, walls and the keep throw shadows on the ground to the right, longer for taller pieces; trees and boulders throw shadows the same way, and so do people, carts and tents. Where shadows overlap they don't get darker.
+- **Tune the sun:** press **`** (or add `?tune`). Under **Sun and shadows**: sun direction (0 is straight from the left, 90 from behind you), sun height (lower is longer shadows), light on the shaded side, warm sun and cool shade, and cast shadow darkness. Changes show at once and are kept when you reload; **Copy numbers** gives a line to paste to me so I can make them the default.
+- **The questions:** side by side with the mockups, does the castle have more depth? Are the shaded sides too dark or not dark enough? Are the shadows the right length and darkness?
+**Known issues:** shadows fall on the ground only, so a tall tower's shadow doesn't darken the wall beside it. Banks and cliffs don't cast shadows. The other styles get the same lighting.

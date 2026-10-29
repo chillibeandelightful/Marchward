@@ -19,6 +19,8 @@ import { style, type Palette } from './styles';
 import { mix, shade } from './terrainStyle';
 import type { RowExtras } from './terrainView';
 import { foundationOutline, type Joined } from './foundation';
+import { FACE, drumNormal, lightSettings, shadowStep, SHADOW_COLOUR, surfaceColour, surfaceLight, type Vec3 } from './lighting';
+import { boxCaster, circle, clipTo, merge, shadowOf, type Caster, type P2 } from './shadows';
 import { surfaceLevel, tileCorners, type TileShape } from './tileGeometry';
 
 const BAD_TINT = 0xd8452f;
@@ -41,6 +43,13 @@ const planned = () => style().castle.planned;
 const SINK = 0.2;
 const MERLON = 0.09;
 const MERLON_H = 0.35;
+
+/**
+ * While a row is drawn for the land, every solid drawn also lands here as a shadow caster, with
+ * its heights measured from `casterGround`. Previews and the art viewer leave it unset.
+ */
+let sink: Caster[] | null = null;
+let casterGround = 0;
 
 /** A world-space box: tile coordinates for x and y, height levels for the base and top. */
 interface Box {
@@ -86,9 +95,18 @@ export class CastleArt implements RowExtras {
     return this.view.occupant[y * this.view.map.width + x] !== 0;
   }
 
-  /** Draw this row's earthwork marks, then every piece whose front-most tile is on this row. */
-  drawRow(diagonal: number, g: Graphics): void {
+  /** Draw this row's earthwork marks, then every piece whose front-most tile is on this row, adding their shadow casters to `casters`. */
+  drawRow(diagonal: number, g: Graphics, casters?: Caster[]): void {
     this.drawEarthworks(g, diagonal);
+    sink = casters ?? null;
+    try {
+      this.drawRowPieces(diagonal, g);
+    } finally {
+      sink = null;
+    }
+  }
+
+  private drawRowPieces(diagonal: number, g: Graphics): void {
     for (const p of this.view.plan.pieces) {
       if (frontDiagonal(p) !== diagonal) continue;
       const done = this.progress(p);
@@ -112,6 +130,7 @@ export class CastleArt implements RowExtras {
     const full = Math.max(...footprint(p).map(([x, y]) => heightAt(this.view.map, x, y))) + drawnLevels(pieceLevels(p), p.kind);
     const finished = built >= 1;
     const top = finished ? full : base + (full - base) * Math.max(0.12, built);
+    casterGround = base + SINK;
     switch (p.kind) {
       case 'wall':
         this.drawWall(g, p, base, top, pal, finished);
@@ -137,6 +156,7 @@ export class CastleArt implements RowExtras {
   /** A breached piece: a low heap of fallen stone on its footings. */
   private drawRubble(g: Graphics, p: PieceSpec): void {
     const base = this.baseLevel(p) - SINK;
+    casterGround = base + SINK;
     for (const [x, y] of footprint(p)) {
       const blocks: Box[] = [];
       for (let i = 0; i < 9; i++) {
@@ -267,7 +287,7 @@ export class CastleArt implements RowExtras {
       merlons.push(...edgeMerlons(b, dx !== 0 ? 'x' : 'y'));
     });
     if (arms.length === 0) merlons.push(...ringMerlons(boxes[0] as Box));
-    drawMerlons(g, merlons, pal);
+    drawMerlons(g, merlons, pal, boxes.map(topOf), top);
   }
 
   /** The outline of a planned piece's footings, drawn on the ground in `colour` over a faint shadow. */
@@ -333,8 +353,6 @@ function pt(x: number, y: number, level: number): number[] {
 
 /** Pixels of the painted stone texture per tile along a face or across a top. Up a face, one pixel is one screen pixel. */
 export const STONE_TEXELS = 32;
-/** The shaded (+x) faces are drawn this much darker than the lit ones. */
-const SHADED = 0.78;
 
 /**
  * The matrix taking painted stone texture pixels to the screen, for a face running along x (at
@@ -354,23 +372,35 @@ function stoneArt(pal: Palette, name: TextureName): Texture | undefined {
   return pal === stone() && style().castle.masonry === 'painted' ? paintedTexture(name) : undefined;
 }
 
-function paint(texture: Texture, m: [number, number, number, number, number, number], light = 1) {
-  return { texture, matrix: new Matrix(...m), color: shade(0xffffff, Math.min(1, light)), textureSpace: 'global' as const };
+/** Painted stone, tinted by the light on the surface it covers (see `surfaceColour`). */
+function paint(texture: Texture, m: [number, number, number, number, number, number], tint = 0xffffff) {
+  return { texture, matrix: new Matrix(...m), color: tint, textureSpace: 'global' as const };
 }
 
-/** The three visible faces of a box: the top, the +y face (lit) and the +x face (shaded). */
+/** The top of a box, as an outline on the ground plane, for shadows falling on it. */
+function topOf(b: Box): P2[] {
+  return [
+    { x: b.x0, y: b.y0 },
+    { x: b.x1, y: b.y0 },
+    { x: b.x1, y: b.y1 },
+    { x: b.x0, y: b.y1 },
+  ];
+}
+
+/** The three visible faces of a box, each lit by how it faces the sun: the top, the +y face (left) and the +x face (right). */
 function drawBox(g: Graphics, b: Box, pal: Palette, courses = false): void {
   const { x0, y0, x1, y1, base, top } = b;
   const { masonry, outline } = style().castle;
+  if (sink) sink.push(boxCaster(x0, y0, x1, y1, (base - casterGround) * levelPx(), (top - casterGround) * levelPx()));
   const left = [...pt(x1, y1, top), ...pt(x0, y1, top), ...pt(x0, y1, base), ...pt(x1, y1, base)];
   const right = [...pt(x1, y0, top), ...pt(x1, y1, top), ...pt(x1, y1, base), ...pt(x1, y0, base)];
   const face = stoneArt(pal, 'stoneFace');
   if (face) {
-    g.poly(left).fill(paint(face, stoneMatrix('x', y1)));
-    g.poly(right).fill(paint(face, stoneMatrix('y', x1), SHADED));
+    g.poly(left).fill(paint(face, stoneMatrix('x', y1), surfaceColour(FACE.left)));
+    g.poly(right).fill(paint(face, stoneMatrix('y', x1), surfaceColour(FACE.right)));
   } else {
-    g.poly(left).fill(shade(pal.face, 1));
-    g.poly(right).fill(shade(pal.face, SHADED));
+    g.poly(left).fill(surfaceColour(FACE.left, pal.face));
+    g.poly(right).fill(surfaceColour(FACE.right, pal.face));
   }
   if (courses && !face && masonry !== 'courses') drawBlocks(g, b, pal);
   else if (courses) {
@@ -388,7 +418,7 @@ function drawBox(g: Graphics, b: Box, pal: Palette, courses = false): void {
   }
   const flags = stoneArt(pal, 'stoneTop');
   g.poly([...pt(x0, y0, top), ...pt(x1, y0, top), ...pt(x1, y1, top), ...pt(x0, y1, top)])
-    .fill(flags ? paint(flags, stoneMatrix('top', top)) : pal.top)
+    .fill(flags ? paint(flags, stoneMatrix('top', top), surfaceColour(FACE.top)) : surfaceColour(FACE.top, pal.top))
     .stroke(outline > 0 ? { width: outline, color: pal.dark, alpha: 0.85, join: 'round' } : { width: 0.8, color: pal.dark, alpha: 0.35 });
 }
 
@@ -404,8 +434,8 @@ function drawBlocks(g: Graphics, b: Box, pal: Palette): void {
   const { x0, y0, x1, y1, base, top } = b;
   const mortar = { width: 0.8, color: pal.dark, alpha: 0.5 };
   const faces = [
-    { from: x0, to: x1, at: (u: number, lv: number) => pt(u, y1, lv), lit: 1 },
-    { from: y0, to: y1, at: (u: number, lv: number) => pt(x1, u, lv), lit: 0.78 },
+    { from: x0, to: x1, at: (u: number, lv: number) => pt(u, y1, lv), n: FACE.left },
+    { from: y0, to: y1, at: (u: number, lv: number) => pt(x1, u, lv), n: FACE.right },
   ];
   const first = Math.ceil((base + 0.01) / COURSE);
   for (const f of faces) {
@@ -426,7 +456,7 @@ function drawBlocks(g: Graphics, b: Box, pal: Palette): void {
         if (h < 0.18 || h > 0.9) {
           const u2 = Math.min(f.to, u + BLOCK);
           const quad = [...f.at(u, lo), ...f.at(u2, lo), ...f.at(u2, hi), ...f.at(u, hi)];
-          g.poly(quad).fill({ color: shade(pal.face, f.lit * (h < 0.18 ? 0.86 : 1.12)), alpha: 0.9 });
+          g.poly(quad).fill({ color: shade(surfaceColour(f.n, pal.face), h < 0.18 ? 0.86 : 1.12), alpha: 0.9 });
         }
       }
     }
@@ -474,18 +504,48 @@ function ringMerlons(b: Box, spacing = 0.22): Box[] {
   return out;
 }
 
-function drawMerlons(g: Graphics, merlons: Box[], pal: Palette): void {
+/**
+ * Merlons (and turrets) standing on `tops` at `level`. Each first casts its shadow across the
+ * walk or roof it stands on, so the battlements read as standing up from it.
+ */
+function drawMerlons(g: Graphics, merlons: Box[], pal: Palette, tops: readonly P2[][] = [], level = 0): void {
+  const strength = lightSettings().shadow;
+  if (tops.length > 0 && strength > 0) {
+    const step = shadowStep();
+    const parts: P2[][] = [];
+    for (const m of merlons) {
+      if (Math.abs(m.base - level) > 1e-6) continue;
+      const shape = shadowOf(boxCaster(m.x0, m.y0, m.x1, m.y1, 0, (m.top - m.base) * levelPx()), step);
+      for (const t of tops) {
+        const part = clipTo(shape, t);
+        if (part.length > 0) parts.push(part);
+      }
+    }
+    for (const part of merge(parts)) g.poly(part.flatMap((p) => pt(p.x, p.y, level))).fill({ color: SHADOW_COLOUR, alpha: strength });
+  }
   merlons.sort((a, b) => a.x0 + a.y0 - (b.x0 + b.y0));
   for (const m of merlons) drawBox(g, m, pal);
 }
 
-/** A dark opening on the +y face (side 'left') or +x face (side 'right') of a box. */
+/** Inside an opening: almost black, so slits, windows and the gate passage read as deep. */
+function recess(colour: number): number {
+  return mix(colour, 0x07080c, 0.55);
+}
+
+/**
+ * A deep opening on the +y face (side 'left') or +x face (side 'right') of a box: dark inside,
+ * with the side of the opening that faces the sun catching a sliver of light and a lit sill.
+ */
 function slit(g: Graphics, b: Box, side: 'left' | 'right', at: number, level: number, w = 0.05, h = 0.6, colour = 0x2b241c): void {
-  const pts =
-    side === 'left'
-      ? [...pt(at - w, b.y1, level + h), ...pt(at + w, b.y1, level + h), ...pt(at + w, b.y1, level), ...pt(at - w, b.y1, level)]
-      : [...pt(b.x1, at - w, level + h), ...pt(b.x1, at + w, level + h), ...pt(b.x1, at + w, level), ...pt(b.x1, at - w, level)];
-  g.poly(pts).fill(colour);
+  const on = (u: number, lv: number) => (side === 'left' ? pt(u, b.y1, lv) : pt(b.x1, u, lv));
+  const quad = (u0: number, u1: number, l0: number, l1: number) => [...on(u0, l1), ...on(u1, l1), ...on(u1, l0), ...on(u0, l0)];
+  g.poly(quad(at - w, at + w, level, level + h)).fill(recess(colour));
+  // Of the opening's two sides only the one at its low end, facing along the wall towards the
+  // camera's side, can be seen; it shows a sliver of light when it faces the sun.
+  const n: Vec3 = side === 'left' ? FACE.right : FACE.left;
+  const base = style().castle.stone.face;
+  if (surfaceLight(n) > lightSettings().ambient + 0.02) g.poly(quad(at - w, at - w * 0.3, level + 0.04, level + h)).fill({ color: surfaceColour(n, base), alpha: 0.8 });
+  g.poly(quad(at - w, at + w, level, level + 0.05)).fill({ color: surfaceColour(FACE.top, base), alpha: 0.85 });
 }
 
 /** A covered pot of oil on a hoist at the front corner of a piece's top. */
@@ -504,12 +564,12 @@ function drawSquareTower(g: Graphics, x: number, y: number, r: number, base: num
     slit(g, b, 'left', x, lv - 0.3, 0.04, 0.55, pal.dark);
     slit(g, b, 'right', y, lv - 0.3, 0.04, 0.55, pal.dark);
   }
-  drawMerlons(g, ringMerlons(b), pal);
+  drawMerlons(g, ringMerlons(b), pal, [topOf(b)], top);
 }
 
 function roundTop(pal: Palette, top: number) {
   const flags = stoneArt(pal, 'stoneTop');
-  return flags ? paint(flags, stoneMatrix('top', top)) : pal.top;
+  return flags ? paint(flags, stoneMatrix('top', top), surfaceColour(FACE.top)) : surfaceColour(FACE.top, pal.top);
 }
 
 function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: number, top: number, pal: Palette, finished: boolean, slits: boolean): void {
@@ -533,9 +593,14 @@ function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: numb
   };
   const { masonry, outline } = style().castle;
   const face = stoneArt(pal, 'stoneFace');
+  if (sink) {
+    const ring = circle(x, y, r, 16);
+    sink.push({ rings: [{ outline: ring, height: Math.max(0, base - casterGround) * levelPx() }, { outline: ring, height: (top - casterGround) * levelPx() }] });
+  }
+  // The drum in narrow strips, each lit by how it faces the sun.
+  const n = 16;
   if (face) {
-    // The drum in narrow strips, each with the texture laid along the curve and lit by how it faces the light (upper left).
-    const n = 16;
+    // Each strip has the texture laid along the curve.
     const u = (a: number) => r * (Math.PI - a) * STONE_TEXELS;
     const level0 = isoToScreen(x, y, 0).sy;
     for (let i = 0; i < n; i++) {
@@ -545,13 +610,15 @@ function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: numb
       const ma = (rx * (Math.cos(a1) - Math.cos(a0))) / du;
       const mb = (ry * (Math.sin(a1) - Math.sin(a0))) / du;
       const m: [number, number, number, number, number, number] = [ma, mb, 0, 1, c0.sx + rx * Math.cos(a0) - u(a0) * ma, level0 + ry * Math.sin(a0) - u(a0) * mb];
-      const mid = (a0 + a1) / 2;
-      const light = 0.7 + 0.32 * Math.max(0, Math.cos(mid - 0.75 * Math.PI));
-      g.poly(half(a0, a1)).fill(paint(face, m, light));
+      g.poly(half(a0, a1)).fill(paint(face, m, surfaceColour(drumNormal((a0 + a1) / 2))));
     }
   } else {
-    g.poly(half(Math.PI, Math.PI / 2)).fill(shade(pal.face, 1));
-    g.poly(half(Math.PI / 2, 0)).fill(shade(pal.face, SHADED));
+    for (let i = 0; i < n; i++) {
+      const a0 = Math.PI * (1 - i / n);
+      const a1 = Math.PI * (1 - (i + 1) / n);
+      // A hair of overlap, so no seam shows between strips.
+      g.poly(half(a0 + 0.004, a1 - 0.004)).fill(surfaceColour(drumNormal((a0 + a1) / 2), pal.face));
+    }
   }
   if (masonry !== 'courses' && !face) {
     // Courses round the drum, with joints staggered course by course.
@@ -574,8 +641,8 @@ function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: numb
   }
   for (let lv = top - 1; slits && lv > base + 0.6; lv -= 1.4) {
     const s = isoToScreen(x, y, lv - 0.3);
-    g.rect(s.sx - rx * 0.45 - 1.5, s.sy + ry * 0.85 - 9, 3, 9).fill(pal.dark);
-    g.rect(s.sx + rx * 0.45 - 1.5, s.sy + ry * 0.85 - 9, 3, 9).fill(pal.dark);
+    g.rect(s.sx - rx * 0.45 - 1.5, s.sy + ry * 0.85 - 9, 3, 9).fill(recess(pal.dark));
+    g.rect(s.sx + rx * 0.45 - 1.5, s.sy + ry * 0.85 - 9, 3, 9).fill(recess(pal.dark));
   }
   g.ellipse(c1.sx, c1.sy, rx, ry).fill(roundTop(pal, top)).stroke({ width: 0.8, color: pal.dark, alpha: 0.35 });
   const m = MERLON / 2;
@@ -586,7 +653,7 @@ function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: numb
     const cy = y + (r - m) * Math.sin(a);
     merlons.push({ x0: cx - m, x1: cx + m, y0: cy - m, y1: cy + m, base: top, top: top + MERLON_H });
   }
-  drawMerlons(g, merlons, pal);
+  drawMerlons(g, merlons, pal, [circle(x, y, r, 16)], top);
 }
 
 function drawGatehouse(g: Graphics, x: number, y: number, axis: 'x' | 'y', base: number, top: number, pal: Palette, finished: boolean): void {
@@ -606,7 +673,7 @@ function drawGatehouse(g: Graphics, x: number, y: number, axis: 'x' | 'y', base:
     archPts.push(...along(w * Math.cos(a), spring + 0.45 * Math.sin(a)));
   }
   archPts.push(...along(w, spring), ...along(w, ground));
-  g.poly(archPts).fill(pal.dark);
+  g.poly(archPts).fill(recess(pal.dark));
   for (let i = -2; i <= 2; i++) {
     const [ax, ay] = along((i * w) / 2.5, ground) as [number, number];
     const [bx, by] = along((i * w) / 2.5, spring + 0.3) as [number, number];
@@ -623,7 +690,7 @@ function drawGatehouse(g: Graphics, x: number, y: number, axis: 'x' | 'y', base:
     [b.x1 - t, b.y1 - t],
   ] as const)
     parts.push({ x0: cx - t, x1: cx + t, y0: cy - t, y1: cy + t, base: top, top: top + 0.8 });
-  drawMerlons(g, parts, pal);
+  drawMerlons(g, parts, pal, [topOf(b)], top);
 }
 
 function drawKeep(g: Graphics, x: number, y: number, base: number, top: number, pal: Palette, finished: boolean): void {
@@ -645,7 +712,7 @@ function drawKeep(g: Graphics, x: number, y: number, base: number, top: number, 
     [b.x1 - t, b.y1 - t],
   ] as const)
     parts.push({ x0: cx - t, x1: cx + t, y0: cy - t, y1: cy + t, base: top, top: top + 1 });
-  drawMerlons(g, parts, pal);
+  drawMerlons(g, parts, pal, [topOf(b)], top);
   // A flagpole with a plain pennant (heraldry comes in M9).
   const [px, py] = pt(x + 0.5, y + 0.5, top) as [number, number];
   const poleTop = py - 46;
