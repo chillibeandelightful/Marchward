@@ -15,6 +15,8 @@ import { DefencePanel } from './ui/defencePanel';
 import { ReportView } from './ui/reportView';
 import { pieceProgress, summariseWorks, type WorksSummary } from './sim/works';
 import { ProceduralAssets } from './render/assets';
+import { loadPaintedArt, PaintedAssets } from './render/paintedArt';
+import { showArtViewer } from './render/artViewer';
 import { Backdrop } from './render/backdrop';
 import { ScreenEffect } from './render/screenEffect';
 import { setStyle, STYLE_ORDER, style } from './render/styles';
@@ -66,6 +68,10 @@ async function start(): Promise<void> {
   const app = new Application();
   await app.init({ resizeTo: host, background: style().background, antialias: true, preference: 'webgl' });
   host.appendChild(app.canvas);
+  // The hand-made art is small, so it is loaded up front whatever the style; anything missing is drawn in code.
+  await loadPaintedArt();
+  // ?art shows every piece of art on a test plot instead of the game.
+  if (new URLSearchParams(location.search).has('art')) return showArtViewer(app);
 
   // ?seed=123 in the URL reproduces a specific run.
   const seedParam = Number(new URLSearchParams(location.search).get('seed'));
@@ -114,7 +120,7 @@ async function start(): Promise<void> {
   art.setShapes((x, y) => shapeAt[y * sim.map.width + x]);
   art.setProgress((p) => pieceProgress(sim.map, sim.works, p));
   art.setRubble((p) => (sim.defence.battle?.pieces[p.id]?.breachedAt ?? null) !== null);
-  const terrain = new TerrainView(shownMap(), shapes, new ProceduralAssets(app.renderer), art);
+  const terrain = new TerrainView(shownMap(), shapes, new PaintedAssets(new ProceduralAssets(app.renderer)), art);
   const ghosts = new Graphics();
   // Smoke rises over everything on the land, so it is drawn above all the rows.
   const sky = new Graphics();

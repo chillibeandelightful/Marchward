@@ -31,7 +31,7 @@ export class ProceduralAssets implements SpriteAssets {
     const key = `${set}:${name}:${v}`;
     let art = this.cache.get(key);
     if (!art) {
-      art = this.make((set === 'classic' ? CLASSIC_PAINTERS : PAINTERS)[name], v);
+      art = this.make((set === 'modern' ? PAINTERS : CLASSIC_PAINTERS)[name], v);
       this.cache.set(key, art);
     }
     return art;

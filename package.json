@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "art:draw": "node tools/art/draw.mjs",
+    "art:templates": "node tools/art/templates.mjs"
   },
   "dependencies": {
     "@fontsource/pixelify-sans": "5.2.7",
