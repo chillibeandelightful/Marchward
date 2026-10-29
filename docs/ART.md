@@ -15,6 +15,8 @@ At zoom 1 one art pixel is one screen pixel; the game starts at zoom 2. Art is d
 
 Light comes from the **upper left**: the lit side of anything is its left and top, the shadow side its right and bottom. Sprites have a dark outline, darkest on the shadow side.
 
+The game has one sun (`src/render/lighting.ts`, tunable in the ` panel), up and a little in front of the left of the view. It shades castle stone and slopes by the way they face, and casts shadows on the ground to the right of castle pieces, trees, rocks, people and tents, so **don't paint cast shadows into sprites or textures**; just keep the sprite's own lit left side and shaded right side.
+
 Colours follow the Drab palette (`src/render/styles/classic.ts`): muted olive and brown ground, grey stone, dark green-black pines, slate water.
 
 ## Sprites
@@ -54,7 +56,7 @@ One repeating 64 × 64 patch for each kind of land: `ground.grass`, `ground.fore
 
 Castle stone is not cut into a sprite for every wall shape. Instead, every face of every wall, tower, gatehouse and keep is covered in one repeating texture, pinned to the world so courses and joints line up from one piece to the next. This works for every wall join, height and thickness, at every view angle.
 
-- **`stoneFace`** (`stone-face.png`, 64 × 52): the face of the walls. 32 pixels across is one tile along a wall; up the face, one pixel is one screen pixel (so 52 pixels is two levels in the Low view). It must **repeat seamlessly** left to right and top to bottom. The game darkens the shaded (+x) faces and the sides of round towers itself, so draw it lit.
+- **`stoneFace`** (`stone-face.png`, 64 × 52): the face of the walls. 32 pixels across is one tile along a wall; up the face, one pixel is one screen pixel (so 52 pixels is two levels in the Low view). It must **repeat seamlessly** left to right and top to bottom. The game lights every face itself by the way it faces the sun (warmer in sun, cooler and darker in shade, shading round the drums of round towers), so draw it evenly and fully lit.
 - **`stoneTop`** (`stone-top.png`, 32 × 32): flagstones on the tops of walls and towers, seen from above; 32 pixels is one tile each way. Also repeating.
 
 ## The manifest

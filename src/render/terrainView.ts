@@ -3,10 +3,12 @@ import { hash2 } from '../sim/noise';
 import { heightAt, inBounds, stepBetween, terrainAt, type TerrainMap } from '../sim/terrain';
 import type { SpriteAssets, SpriteName } from './assets';
 import { paintedTexture } from './paintedArt';
-import { isoToScreen, levelPx } from './iso';
+import { isoToScreen, levelPx, viewAngle } from './iso';
 import { surfaceLevel, type Face, type Pt, type TileShape } from './tileGeometry';
 import { style } from './styles';
 import { shade } from './terrainStyle';
+import { FACE, lightSettings, shadowStep, SHADOW_COLOUR, surfaceColour, sunFacingLight, tilesPerUprightPixel, type Vec3 } from './lighting';
+import { circle, merge, shadowParts, type Caster, type P2 } from './shadows';
 
 interface Decor {
   name: SpriteName;
@@ -18,27 +20,64 @@ interface Decor {
 export interface RowExtras {
   /** Hide the ground sprites (trees, stones) on this tile. */
   hidesDecor(x: number, y: number): boolean;
-  /** Draw whatever stands on this diagonal row (x + y), after the row's ground and sprites. */
-  drawRow(diagonal: number, g: Graphics): void;
+  /** Draw whatever stands on this diagonal row (x + y), after the row's ground and sprites, adding anything that casts a shadow to `casters`. */
+  drawRow(diagonal: number, g: Graphics, casters: Caster[]): void;
 }
 
 /** Painted ground textures are drawn this much brighter than the land, so slopes can be shaded down from them. */
 const GROUND_SHADE = 0.8;
 
 /**
+ * How each kind of ground sprite casts its shadow, as outlines up its height: a fraction of the
+ * sprite's height, and a radius as a fraction of its half width. Sprites not listed cast none.
+ */
+const SPRITE_SHADOWS: Partial<Record<SpriteName, readonly [height: number, radius: number][]>> = {
+  // A trunk, then the cone of branches narrowing to the tip.
+  pine: [
+    [0, 0.2],
+    [0.18, 0.85],
+    [0.55, 0.5],
+    [1, 0.05],
+  ],
+  // A trunk under a round crown.
+  oak: [
+    [0, 0.2],
+    [0.35, 0.75],
+    [0.65, 0.95],
+    [0.95, 0.55],
+  ],
+  boulder: [
+    [0, 0.85],
+    [0.6, 0.7],
+    [1, 0.3],
+  ],
+  stones: [
+    [0, 0.7],
+    [1, 0.4],
+  ],
+};
+
+/**
  * Draws the land from sim state. Each diagonal row of tiles gets one Graphics for the ground,
- * one container for the sprites standing on it and one Graphics for extras (castle pieces),
- * drawn back to front so nearer land and taller things overlap what is behind them.
- * Reads state; never changes it.
+ * one for the shadows cast on it, one container for the sprites standing on it and one Graphics
+ * for extras (castle pieces), drawn back to front so nearer land and taller things overlap what
+ * is behind them. Reads state; never changes it.
  */
 export class TerrainView {
   readonly root = new Container();
   private readonly land = new Container();
   private readonly hover = new Graphics();
   private grid = false;
-  private rows: { ground: Graphics; sprites: Container; extra: Graphics; actors: Graphics }[] = [];
+  private rows: { ground: Graphics; shadow: Graphics; sprites: Container; extra: Graphics; actors: Graphics }[] = [];
   private usedActors = new Set<number>();
   private decor = new Map<number, Sprite[]>();
+  /** The shadow casters of the sprites on each tile, kept with them. */
+  private decorCasters = new Map<number, Caster[]>();
+  /**
+   * The sprites' shadows, cut into tiles and merged, kept between redraws: trees only change with
+   * the land or with the tiles pieces hide (`hidden`), while castle shadows change as pieces rise.
+   */
+  private decorShadows: { hidden: string; parts: Map<number, P2[][]>; merged: Map<number, P2[][]> } | null = null;
 
   constructor(
     private map: TerrainMap,
@@ -79,22 +118,62 @@ export class TerrainView {
       for (const s of shapes) {
         if (s.x + s.y !== d) continue;
         this.decor.delete(s.y * map.width + s.x);
+        this.decorCasters.delete(s.y * map.width + s.x);
+        this.decorShadows = null;
         this.drawTile(row.ground, row.sprites, s);
       }
     }
     this.redrawExtras();
   }
 
-  /** Redraw only the extras and which sprites they hide; much cheaper than a full rebuild. */
+  /** Redraw only the extras, which sprites they hide and the shadows; much cheaper than a full rebuild. */
   redrawExtras(): void {
-    if (!this.extras) return;
-    this.rows.forEach((row, d) => {
-      row.extra.clear();
-      this.extras?.drawRow(d, row.extra);
-    });
-    for (const [i, sprites] of this.decor) {
-      const hidden = this.extras.hidesDecor(i % this.map.width, Math.floor(i / this.map.width));
-      for (const s of sprites) s.visible = !hidden;
+    const casters: Caster[] = [];
+    if (this.extras) {
+      this.rows.forEach((row, d) => {
+        row.extra.clear();
+        this.extras?.drawRow(d, row.extra, casters);
+      });
+      for (const [i, sprites] of this.decor) {
+        const hidden = this.extras.hidesDecor(i % this.map.width, Math.floor(i / this.map.width));
+        for (const s of sprites) s.visible = !hidden;
+      }
+    }
+    this.drawShadows(casters);
+  }
+
+  /** Lay every cast shadow on the ground, each tile's part on that tile's slope, with the tile's row. */
+  private drawShadows(casters: readonly Caster[]): void {
+    for (const row of this.rows) row?.shadow.clear();
+    const strength = lightSettings().shadow;
+    if (strength <= 0) return;
+    const step = shadowStep();
+    const { width, height } = this.map;
+    const hiddenTiles: number[] = [];
+    for (const i of this.decorCasters.keys()) if (this.decor.get(i)?.[0]?.visible === false) hiddenTiles.push(i);
+    const hidden = `${step.x},${step.y}:${hiddenTiles.join(',')}`;
+    if (this.decorShadows?.hidden !== hidden) {
+      const list: Caster[] = [];
+      for (const [i, c] of this.decorCasters) if (this.decor.get(i)?.[0]?.visible !== false) list.push(...c);
+      const parts = shadowParts(list, step, width, height);
+      this.decorShadows = { hidden, parts, merged: new Map([...parts].map(([i, p]) => [i, merge(p)])) };
+    }
+    const decor = this.decorShadows;
+    const byTile = new Map(decor.merged);
+    for (const [i, p] of shadowParts(casters, step, width, height)) byTile.set(i, merge([...(decor.parts.get(i) ?? []), ...p]));
+    const shapeAt = new Map<number, TileShape>();
+    for (const s of this.shapes) shapeAt.set(s.y * this.map.width + s.x, s);
+    for (const [i, pieces] of byTile) {
+      const s = shapeAt.get(i);
+      const row = s ? this.rows[s.x + s.y] : undefined;
+      if (!s || !row) continue;
+      for (const piece of pieces) {
+        const pts = piece.flatMap((p) => {
+          const q = isoToScreen(p.x, p.y, surfaceLevel(s.corners, p.x - s.x, p.y - s.y));
+          return [q.sx, q.sy];
+        });
+        row.shadow.poly(pts).fill({ color: SHADOW_COLOUR, alpha: strength });
+      }
     }
   }
 
@@ -130,6 +209,8 @@ export class TerrainView {
     this.rows = [];
     this.usedActors.clear();
     this.decor.clear();
+    this.decorCasters.clear();
+    this.decorShadows = null;
     let row: Graphics | null = null;
     let sprites: Container | null = null;
     let diagonal = -1;
@@ -138,10 +219,11 @@ export class TerrainView {
         diagonal = s.x + s.y;
         row = new Graphics();
         sprites = new Container();
+        const shadow = new Graphics();
         const extra = new Graphics();
         const actors = new Graphics();
-        this.rows[diagonal] = { ground: row, sprites, extra, actors };
-        this.land.addChild(row, sprites, extra, actors);
+        this.rows[diagonal] = { ground: row, shadow, sprites, extra, actors };
+        this.land.addChild(row, shadow, sprites, extra, actors);
       }
       this.drawTile(row as Graphics, sprites as Container, s);
     }
@@ -153,12 +235,14 @@ export class TerrainView {
     const pal = style().terrain;
     for (const f of s.faces) this.drawFace(g, f);
 
-    // Light comes from the upper left of the screen (the -x side), so slopes rising
-    // towards +x catch it and slopes rising towards +y are a little darker.
+    // Slopes are lit by how they face the sun, compared with flat ground.
     const c = s.corners;
-    const gx = (c.e + c.s - c.n - c.w) / 2;
-    const gy = (c.s + c.w - c.n - c.e) / 2;
-    const light = 1 + 0.4 * gx - 0.18 * gy + 0.05 * (s.level - 2) + (hash2(s.x, s.y, 7) - 0.5) * pal.grain;
+    const rise = levelPx() * tilesPerUprightPixel();
+    const gx = ((c.e + c.s - c.n - c.w) / 2) * rise;
+    const gy = ((c.s + c.w - c.n - c.e) / 2) * rise;
+    const len = Math.hypot(gx, gy, 1);
+    const normal: Vec3 = [-gx / len, -gy / len, 1 / len];
+    const light = sunFacingLight(normal) / sunFacingLight(FACE.top) + 0.05 * (s.level - 2) + (hash2(s.x, s.y, 7) - 0.5) * pal.grain;
     const painted = paintedTexture(`ground.${terrain.id}`);
     // Painted ground is laid on in screen space, so it runs on across tiles; it is drawn bright and shaded down (see docs/ART.md).
     if (painted) g.poly(flat(s.top)).fill({ texture: painted, textureSpace: 'global', color: shade(0xffffff, Math.min(1, light * GROUND_SHADE)) });
@@ -204,6 +288,8 @@ export class TerrainView {
       sprites.addChild(sprite);
       const i = s.y * this.map.width + s.x;
       this.decor.set(i, [...(this.decor.get(i) ?? []), sprite]);
+      const caster = spriteCaster(d.name, { x: s.x + d.u, y: s.y + d.v }, sprite.width, sprite.height);
+      if (caster) this.decorCasters.set(i, [...(this.decorCasters.get(i) ?? []), caster]);
     }
   }
 
@@ -241,7 +327,8 @@ export class TerrainView {
   private drawFace(g: Graphics, f: Face): void {
     const pal = style().terrain;
     const base = pal.face[f.kind];
-    g.poly(flat(f.points)).fill(shade(base, f.side === 'left' ? 1 : 0.78));
+    // Banks and cliffs face +y (left) or +x (right), and are lit like castle faces.
+    g.poly(flat(f.points)).fill(surfaceColour(f.side === 'left' ? FACE.left : FACE.right, base));
     if (f.kind !== 'cliff') return;
     // Rock strata at each whole level, so the height of a cliff can be counted.
     const [a, b] = f.points as [Pt, Pt];
@@ -334,6 +421,15 @@ function decorFor(id: string, x: number, y: number): Decor[] {
       break;
   }
   return out.sort((a, b) => a.u + a.v - (b.u + b.v));
+}
+
+/** A ground sprite's shadow caster, standing at `at` (world tiles), from its size on screen (zoom 1 pixels). */
+function spriteCaster(name: SpriteName, at: P2, w: number, h: number): Caster | null {
+  const shape = SPRITE_SHADOWS[name];
+  if (!shape) return null;
+  // Half the sprite's width across the screen, in world tiles.
+  const half = ((w / 2) * Math.SQRT2) / viewAngle().tileW;
+  return { rings: shape.map(([up, r]) => ({ outline: circle(at.x, at.y, Math.max(0.01, r * half), 10), height: up * h })) };
 }
 
 function flat(pts: readonly { x: number; y: number }[]): number[] {
