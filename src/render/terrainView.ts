@@ -189,7 +189,7 @@ export class TerrainView {
     }
 
     for (const d of decorFor(terrain.id, s.x, s.y)) {
-      const art = this.assets.get(d.name, Math.floor(hash2(s.x, s.y, 90 + d.u * 10) * 3));
+      const art = this.assets.get(d.name, Math.floor(hash2(s.x, s.y, 90 + d.u * 10) * 12));
       const p = this.point(s, d.u, d.v);
       const sprite = new Sprite(art.texture);
       sprite.anchor.set(art.anchorX, art.anchorY);

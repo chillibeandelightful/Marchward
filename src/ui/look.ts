@@ -27,7 +27,7 @@ export function parseLook(text: string | null): Look {
     // Unreadable: use the defaults.
   }
   return {
-    style: raw.style === 'classic' || raw.style === 'modern' || raw.style === 'drab' ? raw.style : DEFAULT_LOOK.style,
+    style: raw.style === 'classic' || raw.style === 'modern' || raw.style === 'drab' || raw.style === 'painted' ? raw.style : DEFAULT_LOOK.style,
     view: raw.view === 'standard' || raw.view === 'high' || raw.view === 'low' ? raw.view : DEFAULT_LOOK.view,
     pixel: raw.pixel === 1 || raw.pixel === 2 || raw.pixel === 3 ? raw.pixel : DEFAULT_LOOK.pixel,
     dither: typeof raw.dither === 'number' && raw.dither >= 0 && raw.dither <= 1 ? Math.round(raw.dither * 20) / 20 : DEFAULT_LOOK.dither,

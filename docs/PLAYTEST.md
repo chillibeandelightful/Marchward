@@ -135,3 +135,12 @@ After each milestone, add a section:
 - **The questions:** which of the three views is closest to what you want? With the sliders, what numbers feel right? Does the courtyard stay visible enough, or would you want the near wall cut away?
 **Known issues:** the art is the same code-drawn stone drawn taller, so battlements and slits look small on tall walls. Very low angles hide more of the courtyard behind the front wall. The panel is a tuning tool and will go once the angle is chosen.
 
+## M5c part 1 – Painted style: stone, trees and plants (2026-10-29)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- In Game → Look pick **Painted** (or press L until it comes up), and **View → Low view** (or H). Build or load a castle.
+- **Look at the stone:** walls, towers, gatehouse and keep are covered in painted grey blocks with dark mortar. Courses should run on from one piece to the next without seams; the shaded sides are darker, and round towers shade across the curve. Pieces being built rise in the same stone; planned and red problem pieces stay flat-coloured so they stand out.
+- **Look at the land:** dark ragged pines and olive oaks in the forests, grey boulders and stones on rock, reeds in the marsh, and grass, heather and bracken tufts on the moor.
+- **The art viewer:** add `?art` to the address (https://chillibeandelightful.github.io/Marchward/?art). It shows every sprite next to the Drab drawing it replaces, and a small test castle in Painted and Drab. Add `&view=standard` or `&view=high` to see the other angles.
+- **The questions:** side by side with the mockups, is Painted heading the right way? Is the stone too regular, too light, too busy? Which pieces most need another pass?
+**Known issues:** figures, the camp, the ground and fire and smoke are still drawn in code (part 2). Battlements are still the thin code-drawn merlons. At zooms between whole steps the stone pixels are slightly uneven in size.

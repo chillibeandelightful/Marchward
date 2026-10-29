@@ -1,4 +1,4 @@
-import type { Graphics } from 'pixi.js';
+import { Matrix, type Graphics, type Texture } from 'pixi.js';
 import { WALL_THICKNESS } from '../data/castle';
 import {
   footprint,
@@ -13,7 +13,8 @@ import {
 } from '../sim/castle';
 import { heightAt, inBounds, NEIGHBOURS, stepBetween } from '../sim/terrain';
 import { hash2 } from '../sim/noise';
-import { drawnLevels, isoToScreen, viewAngle } from './iso';
+import { drawnLevels, isoToScreen, levelPx, viewAngle } from './iso';
+import { paintedTexture, type TextureName } from './paintedArt';
 import { style, type Palette } from './styles';
 import { mix, shade } from './terrainStyle';
 import type { RowExtras } from './terrainView';
@@ -330,15 +331,48 @@ function pt(x: number, y: number, level: number): number[] {
   return [p.sx, p.sy];
 }
 
+/** Pixels of the painted stone texture per tile along a face or across a top. Up a face, one pixel is one screen pixel. */
+export const STONE_TEXELS = 32;
+/** The shaded (+x) faces are drawn this much darker than the lit ones. */
+const SHADED = 0.78;
+
+/**
+ * The matrix taking painted stone texture pixels to the screen, for a face running along x (at
+ * y = `at`) or along y (at x = `at`), or for a flat top at level `at`. The texture is pinned to the
+ * world, so neighbouring pieces' courses and joints line up. As [a, b, c, d, tx, ty].
+ */
+export function stoneMatrix(kind: 'x' | 'y' | 'top', at: number): [number, number, number, number, number, number] {
+  const { tileW: w, tileH: h } = viewAngle();
+  const s = STONE_TEXELS;
+  if (kind === 'x') return [w / (2 * s), h / (2 * s), 0, 1, (-at * w) / 2, (at * h) / 2];
+  if (kind === 'y') return [-w / (2 * s), h / (2 * s), 0, 1, (at * w) / 2, (at * h) / 2];
+  return [w / (2 * s), h / (2 * s), -w / (2 * s), h / (2 * s), 0, -at * levelPx()];
+}
+
+/** The hand-made texture for built stone, when the style paints it and the art is loaded. */
+function stoneArt(pal: Palette, name: TextureName): Texture | undefined {
+  return pal === stone() && style().castle.masonry === 'painted' ? paintedTexture(name) : undefined;
+}
+
+function paint(texture: Texture, m: [number, number, number, number, number, number], light = 1) {
+  return { texture, matrix: new Matrix(...m), color: shade(0xffffff, Math.min(1, light)), textureSpace: 'global' as const };
+}
+
 /** The three visible faces of a box: the top, the +y face (lit) and the +x face (shaded). */
 function drawBox(g: Graphics, b: Box, pal: Palette, courses = false): void {
   const { x0, y0, x1, y1, base, top } = b;
   const { masonry, outline } = style().castle;
   const left = [...pt(x1, y1, top), ...pt(x0, y1, top), ...pt(x0, y1, base), ...pt(x1, y1, base)];
   const right = [...pt(x1, y0, top), ...pt(x1, y1, top), ...pt(x1, y1, base), ...pt(x1, y0, base)];
-  g.poly(left).fill(shade(pal.face, 1));
-  g.poly(right).fill(shade(pal.face, 0.78));
-  if (courses && masonry === 'blocks') drawBlocks(g, b, pal);
+  const face = stoneArt(pal, 'stoneFace');
+  if (face) {
+    g.poly(left).fill(paint(face, stoneMatrix('x', y1)));
+    g.poly(right).fill(paint(face, stoneMatrix('y', x1), SHADED));
+  } else {
+    g.poly(left).fill(shade(pal.face, 1));
+    g.poly(right).fill(shade(pal.face, SHADED));
+  }
+  if (courses && !face && masonry !== 'courses') drawBlocks(g, b, pal);
   else if (courses) {
     // Faint courses of stone, one per half level.
     for (let lv = Math.ceil((base + 0.01) * 2) / 2; lv < top - 0.1; lv += 0.5) {
@@ -352,8 +386,9 @@ function drawBox(g: Graphics, b: Box, pal: Palette, courses = false): void {
     g.poly(left).stroke({ width: outline, color: pal.dark, alpha: 0.85, join: 'round' });
     g.poly(right).stroke({ width: outline, color: pal.dark, alpha: 0.85, join: 'round' });
   }
+  const flags = stoneArt(pal, 'stoneTop');
   g.poly([...pt(x0, y0, top), ...pt(x1, y0, top), ...pt(x1, y1, top), ...pt(x0, y1, top)])
-    .fill(pal.top)
+    .fill(flags ? paint(flags, stoneMatrix('top', top)) : pal.top)
     .stroke(outline > 0 ? { width: outline, color: pal.dark, alpha: 0.85, join: 'round' } : { width: 0.8, color: pal.dark, alpha: 0.35 });
 }
 
@@ -472,6 +507,11 @@ function drawSquareTower(g: Graphics, x: number, y: number, r: number, base: num
   drawMerlons(g, ringMerlons(b), pal);
 }
 
+function roundTop(pal: Palette, top: number) {
+  const flags = stoneArt(pal, 'stoneTop');
+  return flags ? paint(flags, stoneMatrix('top', top)) : pal.top;
+}
+
 function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: number, top: number, pal: Palette, finished: boolean, slits: boolean): void {
   const { tileW, tileH } = viewAngle();
   const rx = (r * tileW) / Math.SQRT2;
@@ -491,10 +531,29 @@ function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: numb
     const upper = arc(c1.sy, to, from);
     return [...lower, ...upper];
   };
-  g.poly(half(Math.PI, Math.PI / 2)).fill(shade(pal.face, 1));
-  g.poly(half(Math.PI / 2, 0)).fill(shade(pal.face, 0.78));
   const { masonry, outline } = style().castle;
-  if (masonry === 'blocks') {
+  const face = stoneArt(pal, 'stoneFace');
+  if (face) {
+    // The drum in narrow strips, each with the texture laid along the curve and lit by how it faces the light (upper left).
+    const n = 16;
+    const u = (a: number) => r * (Math.PI - a) * STONE_TEXELS;
+    const level0 = isoToScreen(x, y, 0).sy;
+    for (let i = 0; i < n; i++) {
+      const a0 = Math.PI * (1 - i / n);
+      const a1 = Math.PI * (1 - (i + 1) / n);
+      const du = u(a1) - u(a0);
+      const ma = (rx * (Math.cos(a1) - Math.cos(a0))) / du;
+      const mb = (ry * (Math.sin(a1) - Math.sin(a0))) / du;
+      const m: [number, number, number, number, number, number] = [ma, mb, 0, 1, c0.sx + rx * Math.cos(a0) - u(a0) * ma, level0 + ry * Math.sin(a0) - u(a0) * mb];
+      const mid = (a0 + a1) / 2;
+      const light = 0.7 + 0.32 * Math.max(0, Math.cos(mid - 0.75 * Math.PI));
+      g.poly(half(a0, a1)).fill(paint(face, m, light));
+    }
+  } else {
+    g.poly(half(Math.PI, Math.PI / 2)).fill(shade(pal.face, 1));
+    g.poly(half(Math.PI / 2, 0)).fill(shade(pal.face, SHADED));
+  }
+  if (masonry !== 'courses' && !face) {
     // Courses round the drum, with joints staggered course by course.
     const mortar = { width: 0.8, color: pal.dark, alpha: 0.5 };
     for (let c = Math.ceil((base + 0.01) / COURSE); c * COURSE < top - 0.05; c++) {
@@ -510,7 +569,7 @@ function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: numb
   }
   if (outline > 0) g.poly(half(Math.PI, 0)).stroke({ width: outline, color: pal.dark, alpha: 0.85, join: 'round' });
   if (!finished) {
-    g.ellipse(c1.sx, c1.sy, rx, ry).fill(pal.top).stroke({ width: 0.8, color: pal.dark, alpha: 0.35 });
+    g.ellipse(c1.sx, c1.sy, rx, ry).fill(roundTop(pal, top)).stroke({ width: 0.8, color: pal.dark, alpha: 0.35 });
     return;
   }
   for (let lv = top - 1; slits && lv > base + 0.6; lv -= 1.4) {
@@ -518,7 +577,7 @@ function drawRoundTower(g: Graphics, x: number, y: number, r: number, base: numb
     g.rect(s.sx - rx * 0.45 - 1.5, s.sy + ry * 0.85 - 9, 3, 9).fill(pal.dark);
     g.rect(s.sx + rx * 0.45 - 1.5, s.sy + ry * 0.85 - 9, 3, 9).fill(pal.dark);
   }
-  g.ellipse(c1.sx, c1.sy, rx, ry).fill(pal.top).stroke({ width: 0.8, color: pal.dark, alpha: 0.35 });
+  g.ellipse(c1.sx, c1.sy, rx, ry).fill(roundTop(pal, top)).stroke({ width: 0.8, color: pal.dark, alpha: 0.35 });
   const m = MERLON / 2;
   const merlons: Box[] = [];
   for (let i = 0; i < 10; i++) {

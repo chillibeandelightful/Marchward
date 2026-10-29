@@ -2,7 +2,7 @@ import type { TerrainId } from '../../data/terrain';
 import type { WorkerType } from '../../data/economy';
 import type { FaceKind } from '../tileGeometry';
 
-export type StyleId = 'modern' | 'classic' | 'drab';
+export type StyleId = 'modern' | 'classic' | 'drab' | 'painted';
 
 /** Colours for one castle piece. Plain stone, or tinted for previews and problems. */
 export interface Palette {
@@ -35,8 +35,11 @@ export interface CastleColours {
   planned: Palette;
   banner: number;
   scaffold: number;
-  /** 'courses' draws faint lines between courses; 'blocks' draws each block with its mortar joints. */
-  masonry: 'courses' | 'blocks';
+  /**
+   * 'courses' draws faint lines between courses; 'blocks' draws each block with its mortar joints;
+   * 'painted' covers the faces with the hand-made stone texture (and falls back to 'blocks' without it).
+   */
+  masonry: 'courses' | 'blocks' | 'painted';
   /** Dark line round every face (0 for none), for a chunky hand-drawn look. */
   outline: number;
 }
@@ -82,8 +85,8 @@ export interface Backdrop {
   moor: number;
 }
 
-/** Which tree and rock drawings to use. */
-export type SpriteSet = 'modern' | 'classic';
+/** Which tree and rock drawings to use: 'painted' is the hand-made art, falling back to the classic drawings. */
+export type SpriteSet = 'modern' | 'classic' | 'painted';
 
 /**
  * Everything about how the game looks in one style. Render and UI read the active style;

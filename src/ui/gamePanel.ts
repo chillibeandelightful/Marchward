@@ -45,7 +45,7 @@ const KEYS_HELP = [
   'Space pauses or starts the clock · V shows the land as planned',
   'Right-drag, or WASD / arrow keys, to move · mouse wheel or + / − to zoom',
   '1–9, 0 pick a tool · R turns the gatehouse · Esc cancels',
-  'C recentres · G shows the grid · L steps through Modern, Classic and Drab · H steps through the views',
+  'C recentres · G shows the grid · L steps through Modern, Classic, Drab and Painted · H steps through the views',
 ];
 
 function describe(file: SaveFile | null | string): string {
@@ -143,11 +143,12 @@ export class GamePanel {
     ];
     s.append(
       el('strong', undefined, 'Look'),
-      el('div', 'dim', 'Classic is darker and grittier, with chunky pixels and a frame of icons. Drab has the same colours and frame, drawn smooth. Press L to step through them.'),
+      el('div', 'dim', 'Classic is darker and grittier, with chunky pixels and a frame of icons. Drab has the same colours and frame, drawn smooth. Painted is Drab with hand-made art (a first pass: stone, trees and plants). Press L to step through them.'),
       row('Style', [
         ['Modern', { style: 'modern' }],
         ['Classic', { style: 'classic' }],
         ['Drab', { style: 'drab' }],
+        ['Painted', { style: 'painted' }],
       ]),
       el('div', 'dim', 'High and Low view are trials, both with the sky always in view and taller stonework: High looks down more steeply, Low looks across at the castle. Placing pieces still uses the flat plan. Press H to step through the views, and the ` key to tune the angle.'),
       row('View', [
