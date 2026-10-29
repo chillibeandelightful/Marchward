@@ -4,6 +4,7 @@ import type { BattleState } from '../sim/battle';
 import { hash2 } from '../sim/noise';
 import type { SimState } from '../sim/state';
 import { isoToScreen } from './iso';
+import { drawArt, frameAt, paintedFrames } from './paintedArt';
 import { style } from './styles';
 import type { ActorHost } from './workersArt';
 
@@ -26,12 +27,23 @@ export function smokeColumn(g: Graphics, sx: number, sy: number, t: number, amou
     const rise = k * (60 + amount * 60);
     const drift = k * k * 26 + Math.sin(t * 0.8 + i) * 3;
     const r = 4 + k * (10 + amount * 8);
-    g.circle(sx + drift, sy - rise, r).fill({ color: colour, alpha: (0.75 + amount * 0.2) * (1 - k * k) * Math.min(1, k * 6) });
+    const alpha = (0.75 + amount * 0.2) * (1 - k * k) * Math.min(1, k * 6);
+    const art = paintedFrames('puff');
+    // Painted puffs are 8 to 16 px across; pick the nearest size and scale it the rest of the way.
+    if (art) puffArt(g, art, sx + drift, sy - rise, r, colour, alpha);
+    else g.circle(sx + drift, sy - rise, r).fill({ color: colour, alpha });
   }
 }
 
 /** Flickering flames over a screen point, `size` in pixels across. */
 export function flames(g: Graphics, sx: number, sy: number, t: number, size: number, seed: number): void {
+  const fire = paintedFrames('fire');
+  if (fire) {
+    // Two fires out of step, so a big blaze doesn't flicker as one.
+    drawArt(g, frameAt(fire, t + seed, 8), sx - size * 0.15, sy, { scale: size / 12 });
+    drawArt(g, frameAt(fire, t + seed + 0.37, 8), sx + size * 0.2, sy, { scale: size / 16, flip: true });
+    return;
+  }
   const fx = style().effects;
   for (let i = 0; i < 3; i++) {
     const x = sx + (i - 1) * size * 0.3;
@@ -51,7 +63,9 @@ export function drawDust(host: ActorHost, b: BattleState, t: number): void {
     if (!g) continue;
     const p = isoToScreen(u.x, u.y, host.ground(u.x, u.y));
     const k = (t * 1.6 + u.id * 0.37) % 1;
-    g.circle(p.sx + 6 + k * 6, p.sy - 4 - k * 8, 2 + k * 4).fill({ color: colour, alpha: 0.45 * (1 - k) });
+    const puffs = paintedFrames('puff');
+    if (puffs) puffArt(g, puffs, p.sx + 6 + k * 6, p.sy - 4 - k * 8, 2 + k * 4, colour, 0.45 * (1 - k));
+    else g.circle(p.sx + 6 + k * 6, p.sy - 4 - k * 8, 2 + k * 4).fill({ color: colour, alpha: 0.45 * (1 - k) });
   }
 }
 
@@ -115,4 +129,14 @@ export function drawBattleFire(host: ActorHost, sim: SimState, b: BattleState, t
     const s = sky ?? g;
     if (s) smokeColumn(s, p.sx, p.sy - 14, t + i * 1.3, 0.4 + amount * 0.6, i * 17 + 5, fx.smoke);
   });
+}
+
+/** A painted puff of radius `r` centred on (cx, cy), tinted and faded. */
+function puffArt(g: Graphics, puffs: Parameters<typeof frameAt>[0], cx: number, cy: number, r: number, colour: number, alpha: number): void {
+  const sizes = [8, 12, 16];
+  let i = 0;
+  while (i < puffs.length - 1 && (sizes[i + 1] ?? 16) <= r * 2) i++;
+  const art = puffs[i] as (typeof puffs)[number];
+  const d = art.texture.frame.width;
+  drawArt(g, art, cx, cy + r, { scale: (r * 2) / d, tint: colour, alpha });
 }

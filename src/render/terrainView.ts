@@ -2,6 +2,7 @@ import { Container, Graphics, Sprite } from 'pixi.js';
 import { hash2 } from '../sim/noise';
 import { heightAt, inBounds, stepBetween, terrainAt, type TerrainMap } from '../sim/terrain';
 import type { SpriteAssets, SpriteName } from './assets';
+import { paintedTexture } from './paintedArt';
 import { isoToScreen, levelPx } from './iso';
 import { surfaceLevel, type Face, type Pt, type TileShape } from './tileGeometry';
 import { style } from './styles';
@@ -20,6 +21,9 @@ export interface RowExtras {
   /** Draw whatever stands on this diagonal row (x + y), after the row's ground and sprites. */
   drawRow(diagonal: number, g: Graphics): void;
 }
+
+/** Painted ground textures are drawn this much brighter than the land, so slopes can be shaded down from them. */
+const GROUND_SHADE = 0.8;
 
 /**
  * Draws the land from sim state. Each diagonal row of tiles gets one Graphics for the ground,
@@ -155,8 +159,11 @@ export class TerrainView {
     const gx = (c.e + c.s - c.n - c.w) / 2;
     const gy = (c.s + c.w - c.n - c.e) / 2;
     const light = 1 + 0.4 * gx - 0.18 * gy + 0.05 * (s.level - 2) + (hash2(s.x, s.y, 7) - 0.5) * pal.grain;
-    g.poly(flat(s.top)).fill(shade(pal.ground[terrain.id], light));
-    if (pal.speckle && !terrain.water) this.drawSpeckle(g, s, pal.speckle, light);
+    const painted = paintedTexture(`ground.${terrain.id}`);
+    // Painted ground is laid on in screen space, so it runs on across tiles; it is drawn bright and shaded down (see docs/ART.md).
+    if (painted) g.poly(flat(s.top)).fill({ texture: painted, textureSpace: 'global', color: shade(0xffffff, Math.min(1, light * GROUND_SHADE)) });
+    else g.poly(flat(s.top)).fill(shade(pal.ground[terrain.id], light));
+    if (pal.speckle && !terrain.water && !painted) this.drawSpeckle(g, s, pal.speckle, light);
     if (this.grid) g.poly(flat(s.top)).stroke({ width: 1, color: pal.grid, alpha: 0.35 });
     this.drawContours(g, s, terrain.water);
 

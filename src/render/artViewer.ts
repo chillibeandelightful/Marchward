@@ -1,18 +1,22 @@
-import { Application, Container, Sprite, Text } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text, TilingSprite } from 'pixi.js';
 import type { TerrainId } from '../data/terrain';
 import { createPlan, placePieces, viewPlan, type PieceSpec } from '../sim/castle';
 import type { TerrainMap } from '../sim/terrain';
 import { ProceduralAssets, type SpriteName } from './assets';
 import { CastleArt } from './castleArt';
+import { flames, smokeColumn } from './effectsArt';
 import { setViewAngle, VIEWS, type ViewId } from './iso';
-import { PaintedAssets, paintedCounts } from './paintedArt';
+import { WORKER_TYPES } from '../data/economy';
+import { UNITS, type UnitType } from '../data/combat';
+import { PaintedAssets, paintedCounts, paintedFrames, paintedTexture, POSES, type ArtName } from './paintedArt';
 import { setStyle, type StyleId } from './styles';
 import { buildTileShapes } from './tileGeometry';
 import { TerrainView } from './terrainView';
 
 /**
  * The art viewer (`?art` in the address): every sprite and its variants, then a small test plot with
- * a castle, in Painted and then Drab, so new art can be checked without playing.
+ * a castle, in Painted and then Drab, so new art can be checked without playing. Below the plants come
+ * the people in each pose (frames left to right), the camp and effects, and the ground textures.
  * `&view=low|high|standard` picks the camera angle (Low by default).
  */
 
@@ -99,6 +103,64 @@ export function showArtViewer(app: Application): void {
     show('drab', 3);
     y += rowH + 16;
   }
+
+  // People, the camp and effects: every frame, left to right, at 3× size.
+  setStyle('painted');
+  const frames = (name: ArtName, x0: number): number => {
+    const list = paintedFrames(name) ?? [];
+    let x = x0;
+    for (const art of list) {
+      const s = new Sprite(art.texture);
+      s.scale.set(scale);
+      s.position.set(x, y);
+      page.addChild(s);
+      x += s.width + 6;
+    }
+    return x;
+  };
+  const kinds = [...WORKER_TYPES, ...(Object.keys(UNITS) as UnitType[])];
+  page.addChild(label('People: each pose, frames left to right', 10, y));
+  y += 24;
+  for (const kind of kinds) {
+    page.addChild(label(kind, 10, y + 20));
+    let x = 150;
+    for (const pose of POSES) if (paintedFrames(`${kind}.${pose}`)) x = frames(`${kind}.${pose}`, x) + 30;
+    y += 23 * scale + 10;
+  }
+  page.addChild(label('Camp and effects', 10, y));
+  y += 24;
+  let x = 10;
+  for (const name of ['tent', 'block', 'log', 'cart', 'cartLoaded', 'fire', 'puff'] as const) x = frames(name, x) + 30;
+  y += 30 * scale + 16;
+  // The effects as the game draws them: small and big flames, then light and thick smoke, at 2×.
+  page.addChild(label('Flames and smoke as drawn in the game (2×), animated', 10, y));
+  y += 24;
+  const fx = new Graphics();
+  fx.position.set(10, y + 170);
+  fx.scale.set(2);
+  page.addChild(fx);
+  app.ticker.add(() => {
+    const t = performance.now() / 1000;
+    fx.clear();
+    flames(fx, 20, 70, t, 10, 1);
+    flames(fx, 70, 70, t, 22, 2);
+    smokeColumn(fx, 140, 70, t, 0.2, 3, 0x6a655c);
+    smokeColumn(fx, 230, 70, t, 1, 4, 0x3c3a36);
+  });
+  y += 330;
+  page.addChild(label('Ground textures, repeated (grass, forest, marsh, rock, shallow, ford, deep)', 10, y));
+  y += 24;
+  x = 10;
+  for (const land of ['grass', 'forest', 'marsh', 'rock', 'shallow', 'ford', 'deep'] as const) {
+    const tex = paintedTexture(`ground.${land}`);
+    if (!tex) continue;
+    const t = new TilingSprite({ texture: tex, width: 128, height: 128 });
+    t.scale.set(1.5);
+    t.position.set(x, y);
+    page.addChild(t);
+    x += 128 * 1.5 + 10;
+  }
+  y += 128 * 1.5 + 20;
 
   // The test plot in both styles.
   page.addChild(label('Test plot: Painted (top) and Drab (below). The thin wall on the right is half built.', 10, y));

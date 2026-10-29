@@ -144,3 +144,14 @@ After each milestone, add a section:
 - **The art viewer:** add `?art` to the address (https://chillibeandelightful.github.io/Marchward/?art). It shows every sprite next to the Drab drawing it replaces, and a small test castle in Painted and Drab. Add `&view=standard` or `&view=high` to see the other angles.
 - **The questions:** side by side with the mockups, is Painted heading the right way? Is the stone too regular, too light, too busy? Which pieces most need another pass?
 **Known issues:** figures, the camp, the ground and fire and smoke are still drawn in code (part 2). Battlements are still the thin code-drawn merlons. At zooms between whole steps the stone pixels are slightly uneven in size.
+
+## M5c part 2 – Painted style: ground, people, camp and effects (2026-10-29)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- Pick **Painted** and **Low view** as for part 1. Start a new game, hire workers and press Space.
+- **The ground:** grass, forest floor, marsh, scree and water now have a painted texture that runs on across hills, darker on the shaded slopes.
+- **The workers:** zoom in on the camp and the building site. Masons, carpenters, quarrymen, labourers and diggers swing their tools; idle workers sit by the camp fire; carters push hand-carts, loaded on the way to the site. The stone and log piles at the camp shrink as you build.
+- **A raid:** in Game → Raids press **Bring the next raid now**. Raiders in dark blue hoods walk in, swing axes at the walls, and turn to face where they walk; your red-tabarded swordsmen fight and archers draw their bows. Burning pieces show painted flames, and smoke and dust drift up in painted puffs.
+- **The art viewer** (`?art`) now shows every person in every pose, the camp and effects, and the ground textures.
+- **The questions:** do the people read clearly at your usual zoom? Is the ground too busy or too plain? Which pieces most need another pass?
+**Known issues:** cliffs, banks, the road's ruts, rubble and the keep's banner are still drawn in code. Each worker faces one way while working. The marsh pattern repeats visibly when zoomed far out.

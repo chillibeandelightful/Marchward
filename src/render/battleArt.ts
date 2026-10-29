@@ -9,6 +9,7 @@ import type { SimState } from '../sim/state';
 import { heightAt } from '../sim/terrain';
 import { pieceProgress } from '../sim/works';
 import { drawnLevels, isoToScreen } from './iso';
+import { drawArt, frameAt, paintedFrames, type Pose } from './paintedArt';
 import { style } from './styles';
 import { drawBattleFire, drawBreachSmoke, drawDust } from './effectsArt';
 import type { ActorHost } from './workersArt';
@@ -70,13 +71,24 @@ function rowFor(sim: SimState, x: number, y: number, piece?: { tiles: number[] }
   return Math.max(...piece.tiles.map((i) => (i % sim.map.width) + Math.floor(i / sim.map.width)));
 }
 
+/** Which way each unit last moved on screen, so painted figures face where they're going. */
+const facing = new Map<number, { sx: number; left: boolean }>();
+
+function facesLeft(id: number, sx: number): boolean {
+  const was = facing.get(id);
+  // Start facing either way, then follow the walk; small jitters don't turn them round.
+  const left = !was ? id % 2 === 1 : Math.abs(sx - was.sx) > 0.05 ? sx < was.sx : was.left;
+  facing.set(id, { sx, left });
+  return left;
+}
+
 function drawUnit(host: ActorHost, sim: SimState, b: BattleState, u: Unit, t: number): void {
   const g = host.layer(rowFor(sim, u.x, u.y, u.on ? b.pieces[u.on] : undefined));
   if (!g) return;
   const on = u.on ? b.pieces[u.on] : undefined;
   const level = on ? on.ground + drawnLevels(on.levels, on.kind) : host.ground(u.x, u.y);
   const p = isoToScreen(u.x, u.y, level);
-  drawSoldier(g, p.sx, p.sy, u.type, u.act, t + u.id * 0.37, u.hp / UNITS[u.type].hp, u.side === 'defender' && u.on !== 0);
+  drawSoldier(g, p.sx, p.sy, u.type, u.act, t + u.id * 0.37, u.hp / UNITS[u.type].hp, u.side === 'defender' && u.on !== 0, facesLeft(u.id, p.sx));
 }
 
 /** A soldier or raider. `act` sets the pose; a bar shows wounds. Drawn at the active style's size and colours. */
@@ -89,7 +101,19 @@ export function drawSoldier(
   t: number,
   health: number,
   onWall = false,
+  left = false,
 ): void {
+  const pose: Pose = act === 'walk' ? 'walk' : act === 'shoot' ? 'shoot' : act === 'stand' ? 'stand' : UNITS[type].bow ? 'stand' : 'fight';
+  const painted = paintedFrames(`${type}.${pose}`);
+  if (painted) {
+    if (!onWall) g.ellipse(sx, sy, 4.5, 1.8).fill({ color: 0x000000, alpha: 0.25 });
+    drawArt(g, frameAt(painted, t, pose === 'walk' ? 5 : act === 'batter' ? 4 : 6), sx, sy, { flip: left });
+    if (health < 0.999) {
+      g.rect(sx - 5, sy - 25, 10, 1.6).fill({ color: 0x000000, alpha: 0.6 });
+      g.rect(sx - 5, sy - 25, 10 * Math.max(0, health), 1.6).fill(health > 0.5 ? 0x9fd98b : health > 0.25 ? 0xf0c56a : 0xf08a72);
+    }
+    return;
+  }
   const f = style().figures;
   const defender = UNITS[type].side === 'defender';
   const archer = !!UNITS[type].bow;
@@ -193,6 +217,6 @@ function drawGarrison(host: ActorHost, sim: SimState, t: number): void {
       level = Math.max(...footprint(piece).map(([px, py]) => heightAt(sim.map, px, py))) + drawnLevels(levels, piece.kind);
     }
     const p = isoToScreen(x, y, level);
-    drawSoldier(g, p.sx, p.sy, post.type, 'stand', t + n, 1, !!(piece && built));
+    drawSoldier(g, p.sx, p.sy, post.type, 'stand', t + n, 1, !!(piece && built), n % 2 === 1);
   }
 }

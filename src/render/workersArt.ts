@@ -5,6 +5,7 @@ import { hash2 } from '../sim/noise';
 import type { SimState } from '../sim/state';
 import { flames } from './effectsArt';
 import { isoToScreen } from './iso';
+import { drawArt, frameAt, paintedFrames } from './paintedArt';
 import { style } from './styles';
 
 // Tunic colours (one per trade, so they can be told apart on site) and the rest come from the active style.
@@ -112,6 +113,13 @@ function drawFigure(host: ActorHost, x: number, y: number, type: WorkerType, t: 
   const o = at(host, x, y);
   if (!o) return;
   const { g } = o;
+  const painted = paintedFrames(`${type}.${busy ? 'work' : 'sit'}`);
+  if (painted) {
+    // Each keeps to one facing, picked from where they stand.
+    g.ellipse(o.sx, o.sy, 4.5, 1.8).fill({ color: 0x000000, alpha: 0.25 });
+    drawArt(g, frameAt(painted, t, type === 'mason' || type === 'carpenter' ? 6 : 4), o.sx, o.sy, { flip: hash2(Math.round(x * 10), Math.round(y * 10), 3) < 0.5 });
+    return;
+  }
   const f = style().figures;
   const speed = type === 'mason' || type === 'carpenter' ? 5 : 3;
   const swing = busy ? Math.sin(t * speed) : 0;
@@ -151,6 +159,15 @@ function drawCarter(host: ActorHost, x: number, y: number, t: number, loaded: bo
   const o = at(host, x, y);
   if (!o) return;
   const { g } = o;
+  const walk = paintedFrames('carter.walk');
+  const barrow = paintedFrames(loaded ? 'cartLoaded' : 'cart');
+  if (walk && barrow) {
+    g.ellipse(o.sx + 6, o.sy, 9, 2.4).fill({ color: 0x000000, alpha: 0.22 });
+    // The carter pushes the cart ahead, both facing the same way.
+    drawArt(g, barrow[0] as NonNullable<(typeof barrow)[0]>, o.sx + 4, o.sy);
+    drawArt(g, frameAt(walk, t, 6), o.sx, o.sy);
+    return;
+  }
   const f = style().figures;
   const step = Math.sin(t * 8) * 1.2;
   g.setTransform(f.scale, 0, 0, f.scale, o.sx, o.sy);
@@ -173,6 +190,7 @@ function drawCarter(host: ActorHost, x: number, y: number, t: number, loaded: bo
 
 /** Tents, a fire, and piles of stone and timber that grow and shrink with the stores. */
 function drawCamp(host: ActorHost, sim: SimState, cx: number, cy: number, t: number): void {
+  if (drawPaintedCamp(host, sim, cx, cy, t)) return;
   const f = style().figures;
   for (const [dx, dy] of [
     [-0.6, -0.6],
@@ -195,7 +213,7 @@ function drawCamp(host: ActorHost, sim: SimState, cx: number, cy: number, t: num
   }
   // Stone blocks, up to five rows high.
   const stones = Math.min(30, Math.ceil(sim.economy.stores.stone / 40));
-  const s = at(host, cx + 1.1, cy - 0.1);
+  const s = at(host, cx + 1.5, cy + 0.2);
   if (s)
     for (let i = 0; i < stones; i++) {
       const row = Math.floor(i / 6);
@@ -213,4 +231,44 @@ function drawCamp(host: ActorHost, sim: SimState, cx: number, cy: number, t: num
       const ly = l.sy - row * 4;
       l.g.circle(lx, ly - 2, 2.2).fill(f.log).stroke({ width: 0.5, color: f.outline ?? 0x5a4024 });
     }
+}
+
+/** The camp from the painted art, if there is any: false to draw it in code instead. */
+function drawPaintedCamp(host: ActorHost, sim: SimState, cx: number, cy: number, t: number): boolean {
+  const tents = paintedFrames('tent');
+  const blocks = paintedFrames('block');
+  const logs = paintedFrames('log');
+  const fire = paintedFrames('fire');
+  if (!tents || !blocks || !logs || !fire) return false;
+  (
+    [
+      [-0.6, -0.6],
+      [0.6, -0.7],
+      [-0.7, 0.5],
+    ] as const
+  ).forEach(([dx, dy], i) => {
+    const o = at(host, cx + dx, cy + dy);
+    if (o) drawArt(o.g, tents[i % tents.length] as (typeof tents)[0], o.sx, o.sy);
+  });
+  const hearth = at(host, cx + 0.15, cy + 1.2);
+  if (hearth) {
+    hearth.g.ellipse(hearth.sx, hearth.sy, 5, 2).fill(0x3a2e22);
+    drawArt(hearth.g, frameAt(fire, t, 8), hearth.sx, hearth.sy + 1, { scale: 0.6 });
+  }
+  // Stone blocks, up to five rows high, and the log pile, growing and shrinking with the stores.
+  // Stacked as a stepped heap: six on the bottom row, one fewer on each row up.
+  let stones = Math.min(21, Math.ceil(sim.economy.stores.stone / 50));
+  const s = at(host, cx + 1.5, cy + 0.2);
+  if (s)
+    for (let row = 0; stones > 0; row++)
+      for (let k = 0; k < 6 - row && stones > 0; k++, stones--)
+        drawArt(s.g, blocks[(row + k) % blocks.length] as (typeof blocks)[0], s.sx - 20 + row * 4 + k * 8, s.sy - row * 5);
+  const wood = Math.min(12, Math.ceil(sim.economy.stores.timber / 25));
+  const l = at(host, cx + 0.5, cy + 0.9);
+  if (l)
+    for (let i = 0; i < wood; i++) {
+      const row = Math.floor(i / 4);
+      drawArt(l.g, logs[i % logs.length] as (typeof logs)[0], l.sx + 8 + (i % 4) * 5 + row * 2.5, l.sy - row * 5);
+    }
+  return true;
 }

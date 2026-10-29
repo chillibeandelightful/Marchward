@@ -251,3 +251,12 @@ Update as milestones complete.
 - `docs/ART.md` spec for the Low view angle; `npm run art:templates` writes guides to paint over; the art viewer at `?art` shows every sprite and a test castle in Painted and Drab.
 - Tests: the art files and manifest agree, bad manifests are handled, the stone texture is pinned to the world in every view, the Painted style is registered.
 - Still to come in part 2: ground textures, figures, the camp and effects.
+
+### M5c – Hand-made art, first pass (part 2 of 2, 2026-10-29)
+- Ground: a repeating painted patch for each kind of land (moorland grass, forest floor, marsh with pools, scree, and three waters), laid on the screen so it runs on across tiles and slopes and shaded with the land.
+- People: the six worker trades working (4 frames) and sitting idle at the camp, the carter pushing an empty or loaded hand-cart, and swordsmen, archers, raiders and raider archers standing, walking (4 frames), fighting (3) or shooting (2). Drawn facing right and mirrored; soldiers turn to face the way they walk.
+- Camp: three tents, a stepped heap of stone blocks and a pile of logs that grow and shrink with the stores, and a crackling hearth.
+- Effects: painted flames on burning pieces, and painted puffs for smoke and dust, tinted and faded as before.
+- Art viewer: rows for every person and pose, the camp and effects, and the ground textures.
+- Tests: the manifest covers every kind of person in the poses the game uses, the camp and effects, and a 64 × 64 ground texture for every kind of land.
+- M5c is done. Anything without painted art (the road's ruts, cliffs and banks, the keep's banner, rubble) is still drawn in code, in the Drab look.
