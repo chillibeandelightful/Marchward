@@ -5,28 +5,12 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { encodePng, get, image, put } from './png.mjs';
+import { int, outline, rng, shift } from './kit.mjs';
+import { cart, PEOPLE, person, posesFor } from './figures.mjs';
+import { block, fire, logEnd, puff, tent } from './camp.mjs';
+import * as ground from './ground.mjs';
 
 const OUT = join(import.meta.dirname, '..', '..', 'public', 'art');
-
-/** A small seeded random number generator, so the art comes out the same every run. */
-function rng(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-const int = (r, lo, hi) => lo + Math.floor(r() * (hi - lo + 1));
-
-/** Lighten (amount > 0) or darken a colour by a number of steps out of 255, per channel. */
-function shift(c, amount) {
-  const ch = (v) => Math.max(0, Math.min(255, v + amount));
-  return (ch((c >> 16) & 0xff) << 16) | (ch((c >> 8) & 0xff) << 8) | ch(c & 0xff);
-}
 
 // ---------------------------------------------------------------------------------------------
 // Stone. Faces repeat across every wall, tower and keep, so they must tile seamlessly: 64 pixels
@@ -120,22 +104,6 @@ function stoneTop() {
 // ---------------------------------------------------------------------------------------------
 // Plants and rocks. Each is drawn on its own small canvas with the ground contact point at the
 // bottom middle, and light from the upper left.
-
-/** Give every drawn pixel on the edge of the shape a dark outline: darkest on the shadow side. */
-function outline(img, dark, soft) {
-  const edge = [];
-  for (let y = 0; y < img.height; y++)
-    for (let x = 0; x < img.width; x++) {
-      if (get(img, x, y) === null) continue;
-      const right = get(img, x + 1, y) === null;
-      const below = get(img, x, y + 1) === null;
-      const left = get(img, x - 1, y) === null;
-      const above = get(img, x, y - 1) === null;
-      if (right || below) edge.push([x, y, dark]);
-      else if (left || above) edge.push([x, y, soft]);
-    }
-  for (const [x, y, c] of edge) put(img, x, y, c);
-}
 
 const PINE = { ink: 0x0c140f, shadow: 0x15241a, deep: 0x1c3021, mid: 0x253f2b, lit: 0x325236, glint: 0x466944 };
 
@@ -348,12 +316,38 @@ const plants = sheet([
   ['tuft', range(4, tuft)],
 ]);
 writeFileSync(join(OUT, 'plants.png'), encodePng(plants.img));
+
+// People: one row per kind and pose, the frames of each animation in order.
+const people = sheet(
+  Object.keys(PEOPLE).flatMap((kind) => Object.entries(posesFor(kind)).map(([pose, n]) => [`${kind}.${pose}`, range(n, (f) => person(kind, pose, f))])),
+);
+writeFileSync(join(OUT, 'people.png'), encodePng(people.img));
+
+const camp = sheet([
+  ['tent', range(3, tent)],
+  ['block', range(3, block)],
+  ['log', range(3, logEnd)],
+  ['cart', [cart(false)]],
+  ['cartLoaded', [cart(true)]],
+  ['fire', range(4, fire)],
+  ['puff', range(3, puff)],
+]);
+writeFileSync(join(OUT, 'camp.png'), encodePng(camp.img));
+
 writeFileSync(join(OUT, 'stone-face.png'), encodePng(stoneFace()));
 writeFileSync(join(OUT, 'stone-top.png'), encodePng(stoneTop()));
+const lands = ['grass', 'forest', 'marsh', 'rock', 'shallow', 'ford', 'deep'];
+for (const land of lands) writeFileSync(join(OUT, `ground-${land}.png`), encodePng(ground[land]()));
 const manifest = {
   version: 1,
-  sheets: { 'plants.png': plants.sprites },
-  textures: { stoneFace: 'stone-face.png', stoneTop: 'stone-top.png' },
+  sheets: { 'plants.png': plants.sprites, 'people.png': people.sprites, 'camp.png': camp.sprites },
+  textures: {
+    stoneFace: 'stone-face.png',
+    stoneTop: 'stone-top.png',
+    ...Object.fromEntries(lands.map((land) => [`ground.${land}`, `ground-${land}.png`])),
+    // The road is grass with a muddy track drawn over it.
+    'ground.road': 'ground-grass.png',
+  },
 };
 writeFileSync(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 console.log(`Wrote ${OUT}`);

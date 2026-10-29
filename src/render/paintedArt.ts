@@ -1,4 +1,7 @@
-import { Assets, Rectangle, Texture } from 'pixi.js';
+import { Assets, Rectangle, Texture, type Graphics } from 'pixi.js';
+import type { TerrainId } from '../data/terrain';
+import { WORKER_TYPES } from '../data/economy';
+import { UNITS, type UnitType } from '../data/combat';
 import type { SpriteArt, SpriteAssets, SpriteName } from './assets';
 import { style } from './styles';
 
@@ -18,18 +21,43 @@ export interface Frame {
   ay: number;
 }
 
-export type TextureName = 'stoneFace' | 'stoneTop';
+export type TextureName = 'stoneFace' | 'stoneTop' | `ground.${TerrainId}`;
+
+/** Everything else on the sheets: people (`kind.pose`, frames in order), the camp, and effects. */
+export type ArtName = SpriteName | `${string}.${string}` | 'tent' | 'block' | 'log' | 'cart' | 'cartLoaded' | 'fire' | 'puff';
 
 export interface Manifest {
   version: 1;
   /** Sheet file name to the sprites on it, each with its variants in order. */
-  sheets: Record<string, Partial<Record<SpriteName, Frame[]>>>;
+  sheets: Record<string, Partial<Record<ArtName, Frame[]>>>;
   /** Repeating textures, each in its own file so it can wrap. */
   textures: Partial<Record<TextureName, string>>;
 }
 
-const SPRITE_NAMES: readonly SpriteName[] = ['pine', 'oak', 'boulder', 'stones', 'reeds', 'tuft'];
-const TEXTURE_NAMES: readonly TextureName[] = ['stoneFace', 'stoneTop'];
+const LANDS: readonly TerrainId[] = ['grass', 'forest', 'marsh', 'rock', 'shallow', 'ford', 'deep', 'road'];
+
+/** The poses each kind of person can have. */
+export const POSES = ['work', 'sit', 'walk', 'stand', 'fight', 'shoot'] as const;
+export type Pose = (typeof POSES)[number];
+
+/** Every name the game knows how to use. Anything else in a manifest is reported and ignored. */
+export const ART_NAMES: ReadonlySet<string> = new Set([
+  'pine',
+  'oak',
+  'boulder',
+  'stones',
+  'reeds',
+  'tuft',
+  'tent',
+  'block',
+  'log',
+  'cart',
+  'cartLoaded',
+  'fire',
+  'puff',
+  ...[...WORKER_TYPES, ...(Object.keys(UNITS) as UnitType[])].flatMap((kind) => POSES.map((pose) => `${kind}.${pose}`)),
+]);
+const TEXTURE_NAMES: ReadonlySet<string> = new Set(['stoneFace', 'stoneTop', ...LANDS.map((l) => `ground.${l}`)]);
 
 function isFrame(f: unknown): f is Frame {
   if (!f || typeof f !== 'object') return false;
@@ -48,26 +76,26 @@ export function parseManifest(json: unknown): { manifest: Manifest; problems: st
   }
   const raw = json as { sheets?: unknown; textures?: unknown };
   for (const [file, sprites] of Object.entries(raw.sheets && typeof raw.sheets === 'object' ? raw.sheets : {})) {
-    const out: Partial<Record<SpriteName, Frame[]>> = {};
+    const out: Partial<Record<ArtName, Frame[]>> = {};
     for (const [name, frames] of Object.entries(sprites && typeof sprites === 'object' ? (sprites as object) : {})) {
-      if (!SPRITE_NAMES.includes(name as SpriteName)) {
+      if (!ART_NAMES.has(name)) {
         problems.push(`${file}: unknown sprite "${name}"`);
         continue;
       }
       const good = Array.isArray(frames) ? frames.filter(isFrame) : [];
       if (!Array.isArray(frames) || good.length !== frames.length) problems.push(`${file}: some frames of "${name}" are malformed`);
-      if (good.length > 0) out[name as SpriteName] = good;
+      if (good.length > 0) out[name as ArtName] = good;
     }
     manifest.sheets[file] = out;
   }
   for (const [name, file] of Object.entries(raw.textures && typeof raw.textures === 'object' ? raw.textures : {})) {
-    if (!TEXTURE_NAMES.includes(name as TextureName) || typeof file !== 'string') problems.push(`unknown or malformed texture "${name}"`);
+    if (!TEXTURE_NAMES.has(name) || typeof file !== 'string') problems.push(`unknown or malformed texture "${name}"`);
     else manifest.textures[name as TextureName] = file;
   }
   return { manifest, problems };
 }
 
-const sprites = new Map<SpriteName, SpriteArt[]>();
+const sprites = new Map<ArtName, SpriteArt[]>();
 const textures = new Map<TextureName, Texture>();
 
 /** Load the art listed in `<base>manifest.json`. Missing or broken art is logged and skipped. */
@@ -95,7 +123,7 @@ export async function loadPaintedArt(base = 'art/'): Promise<void> {
     ...Object.entries(manifest.sheets).map(async ([file, list]) => {
       const sheet = await load(file);
       if (!sheet) return;
-      for (const [name, frames] of Object.entries(list) as [SpriteName, Frame[]][]) {
+      for (const [name, frames] of Object.entries(list) as [ArtName, Frame[]][]) {
         sprites.set(
           name,
           frames.map((f) => ({
@@ -119,9 +147,37 @@ export function paintedTexture(name: TextureName): Texture | undefined {
   return style().sprites === 'painted' ? textures.get(name) : undefined;
 }
 
-/** How many variants of each sprite were loaded, for the art viewer. */
-export function paintedCounts(): Partial<Record<SpriteName, number>> {
+/** How many variants or frames of each piece of art were loaded, for the art viewer. */
+export function paintedCounts(): Partial<Record<ArtName, number>> {
   return Object.fromEntries([...sprites].map(([k, v]) => [k, v.length]));
+}
+
+/** The frames (or variants) of a piece of art, if the active style uses painted art and it was loaded. */
+export function paintedFrames(name: ArtName): readonly SpriteArt[] | undefined {
+  const list = style().sprites === 'painted' ? sprites.get(name) : undefined;
+  return list && list.length > 0 ? list : undefined;
+}
+
+/** One frame of a looping animation, `rate` frames a second. */
+export function frameAt(frames: readonly SpriteArt[], t: number, rate: number): SpriteArt {
+  const n = frames.length;
+  return frames[((Math.floor(t * rate) % n) + n) % n] as SpriteArt;
+}
+
+/**
+ * Draw a piece of art into a Graphics layer with its ground point at (sx, sy): mirrored to face left
+ * if `flip`, scaled, tinted and faded as asked. For layers redrawn every frame (people, effects).
+ */
+export function drawArt(g: Graphics, art: SpriteArt, sx: number, sy: number, opts: { flip?: boolean; scale?: number; tint?: number; alpha?: number } = {}): void {
+  const s = opts.scale ?? 1;
+  const w = art.texture.frame.width;
+  const h = art.texture.frame.height;
+  const before = g.fillStyle;
+  g.fillStyle = { ...before, alpha: opts.alpha ?? 1 };
+  g.setTransform(opts.flip ? -s : s, 0, 0, s, sx, sy);
+  g.texture(art.texture, opts.tint ?? 0xffffff, -art.anchorX * w, -art.anchorY * h, w, h);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.fillStyle = before;
 }
 
 /** Painted sprites where there are some and the style wants them; the fallback's drawing otherwise. */
@@ -129,8 +185,8 @@ export class PaintedAssets implements SpriteAssets {
   constructor(private readonly fallback: SpriteAssets) {}
 
   get(name: SpriteName, variant: number): SpriteArt {
-    const list = style().sprites === 'painted' ? sprites.get(name) : undefined;
-    if (!list || list.length === 0) return this.fallback.get(name, variant);
+    const list = paintedFrames(name);
+    if (!list) return this.fallback.get(name, variant);
     return list[((variant % list.length) + list.length) % list.length] as SpriteArt;
   }
 }

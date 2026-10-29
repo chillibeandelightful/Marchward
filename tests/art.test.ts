@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import type { SpriteName } from '../src/render/assets';
 import { STONE_TEXELS, stoneMatrix } from '../src/render/castleArt';
 import { isoToScreen, setViewAngle } from '../src/render/iso';
-import { parseManifest } from '../src/render/paintedArt';
+import { parseManifest, POSES } from '../src/render/paintedArt';
+import { WORKER_TYPES } from '../src/data/economy';
+import { UNITS, type UnitType } from '../src/data/combat';
 import { STYLE_ORDER, STYLES } from '../src/render/styles';
 import { parseLook } from '../src/ui/look';
 
@@ -38,6 +40,27 @@ describe('painted art files', () => {
   it('cover every tree, rock and plant in the first pass', () => {
     const drawn = new Set(Object.values(manifest.sheets).flatMap((s) => Object.keys(s)));
     for (const name of ['pine', 'oak', 'boulder', 'stones', 'reeds', 'tuft'] as SpriteName[]) expect(drawn.has(name), name).toBe(true);
+  });
+
+  it('cover every kind of person, the camp and the effects in the second pass', () => {
+    const drawn = new Set(Object.values(manifest.sheets).flatMap((s) => Object.keys(s)));
+    for (const name of ['tent', 'block', 'log', 'cart', 'cartLoaded', 'fire', 'puff']) expect(drawn.has(name), name).toBe(true);
+    for (const kind of WORKER_TYPES) {
+      // Workers work (the carter walks with the cart) and sit when idle.
+      expect(drawn.has(kind === 'carter' ? 'carter.walk' : `${kind}.work`), kind).toBe(true);
+      expect(drawn.has(`${kind}.sit`), kind).toBe(true);
+    }
+    for (const kind of Object.keys(UNITS) as UnitType[])
+      for (const pose of ['stand', 'walk', UNITS[kind].bow ? 'shoot' : 'fight']) expect(drawn.has(`${kind}.${pose}`), `${kind}.${pose}`).toBe(true);
+    expect(POSES).toContain('fight');
+  });
+
+  it('have a 64 × 64 ground texture for every kind of land', () => {
+    for (const land of ['grass', 'forest', 'marsh', 'rock', 'shallow', 'ford', 'deep', 'road'] as const) {
+      const file = manifest.textures[`ground.${land}`];
+      expect(file, land).toBeDefined();
+      expect(pngSize(file ?? ''), land).toEqual({ width: 64, height: 64 });
+    }
   });
 
   it('have stone textures at the sizes in docs/ART.md', () => {

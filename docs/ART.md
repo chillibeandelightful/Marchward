@@ -19,12 +19,36 @@ Colours follow the Drab palette (`src/render/styles/classic.ts`): muted olive an
 
 ## Sprites
 
-Trees, rocks, plants (and later figures, carts and effects) are frames on a sprite sheet.
+Trees, rocks, plants, people, the camp and effects are frames on a sprite sheet.
 
 - **Size:** as small as the drawing; there is no fixed frame size. Today's first set: pines 24 × 50, oaks 28 × 34, boulders 18 × 13, stones 16 × 7, reeds 13 × 15, heather and grass 11 × 6.
 - **Anchor:** the pixel where the sprite meets the ground, usually the bottom middle. The sprite is placed so the bottom of that pixel sits on the ground point.
 - **Variants:** as many as you like per sprite; the game picks one per spot at random (the same one every time for a given spot). Today: 6 pines, 4 oaks, 4 boulders, 3 stones, 3 reeds and 4 kinds of ground cover (grass, heather, bracken, dark grass).
 - **Names:** `pine`, `oak`, `boulder`, `stones`, `reeds`, `tuft`. New names need a line in `src/render/assets.ts` and `src/render/paintedArt.ts`.
+
+### People
+
+Each kind of person is `kind.pose`, with the pose's animation frames in order: for example `mason.work` or `archer.shoot`. People are drawn **facing right** on a 16 × 23 frame with the feet's anchor at (7, 21); the game mirrors them to face left.
+
+| Kind | Poses (frames) |
+| --- | --- |
+| `labourer`, `digger`, `quarryman`, `mason`, `carpenter` | `work` (4: tool raised, then coming down), `sit` (1, idle at the camp) |
+| `carter` | `walk` (4, pushing the cart), `sit` (1) |
+| `swordsman`, `raider` | `stand` (1), `walk` (4), `fight` (3; also used for battering and looting) |
+| `archer`, `raiderArcher` | `stand` (1), `walk` (4), `shoot` (2: nocked, drawn) |
+
+Any pose a kind lacks falls back to the code drawing for that kind.
+
+### Camp and effects
+
+- `tent` (variants, 42 × 30, anchor at the middle of the ground line), `block` (a stone block for the stone pile, 8 × 6) and `log` (a cut log end for the timber pile, 6 × 6). The piles grow and shrink with the stores.
+- `cart` and `cartLoaded` (21 × 15): the carter's hand-cart, handles at the left, drawn in front of the carter.
+- `fire` (4 frames, 14 × 20): flames for burning pieces and the camp hearth, scaled to the size of the blaze.
+- `puff` (3 sizes: 8, 12 and 16 px): one round puff of smoke or dust, drawn light grey. The game tints it to the smoke or dust colour, fades it, and scales it as it rises, so draw it as a light, neutral shape.
+
+## Ground textures
+
+One repeating 64 × 64 patch for each kind of land: `ground.grass`, `ground.forest`, `ground.marsh`, `ground.rock`, `ground.shallow`, `ground.ford`, `ground.deep` and `ground.road` (today the road reuses the grass patch, and the code draws the road's ruts over it). The patch is laid on the screen, one texture pixel to one screen pixel at zoom 1, so it runs on unbroken across tiles and slopes. The game darkens it to shade slopes and can't lighten it, so draw it about a quarter brighter than the land should look on flat ground. It must repeat seamlessly.
 
 ## Stone textures
 
@@ -43,7 +67,7 @@ Castle stone is not cut into a sprite for every wall shape. Instead, every face 
       "pine": [{ "x": 0, "y": 0, "w": 24, "h": 50, "ax": 12, "ay": 49 }]
     }
   },
-  "textures": { "stoneFace": "stone-face.png", "stoneTop": "stone-top.png" }
+  "textures": { "stoneFace": "stone-face.png", "stoneTop": "stone-top.png", "ground.grass": "ground-grass.png" }
 }
 ```
 
