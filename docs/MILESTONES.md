@@ -268,3 +268,10 @@ Update as milestones complete.
 - Art viewer: rows for every person and pose, the camp and effects, and the ground textures.
 - Tests: the manifest covers every kind of person in the poses the game uses, the camp and effects, and a 64 × 64 ground texture for every kind of land.
 - M5c is done. Anything without painted art (the road's ruts, cliffs and banks, the keep's banner, rubble) is still drawn in code, in the Drab look.
+
+### Playtest fixes: walls, height lines, extras and banks (2026-10-30)
+- Walls: the dark vertical lines every half tile are gone. A straight run through a tile is now one block of masonry instead of two arms, and where a wall runs on into the next piece the join gets no outline and the earlier piece reaches a hair under the later one, so no seam shows. Corners, ends and towers keep their outlines. Affects every style (the lines were strongest in Classic and Drab).
+- Height lines: the faint lines where the land steps up or down a level are now off by default. Game → Look → **Height lines** (or the **K** key) turns them back on; kept per browser with the other look settings. The top-down plan view still shows its contours while placing.
+- Extras while placing: the Wall, Tower and Gatehouse tools have a **Build in** row with **Arrow slits** and **Oil cauldron** switches. Whatever is switched on is built into every piece laid, and the preview, costs and stats include it. The Extras tool (9) still adds or takes them off afterwards.
+- Banks and cliffs: a drop of two levels or more is drawn as rock (jointed columns, broken bedding lines at each level, a sunlit lip, a shadowed foot, and the painted scree texture in Painted); a one-level bank is earth with darker soil low down, stones and roots, and the turf of the land above hanging ragged over the lip. Where a bank stands in water its foot is wet mud with a waterline, and reeds grow in the water along banks the camera can see.
+- Tests: extras switched on while placing go on every piece of a line and are charged for, never on the keep; height lines are off unless asked for; reeds grow only along the foot of a bank behind water.

@@ -45,7 +45,7 @@ const KEYS_HELP = [
   'Space pauses or starts the clock · V shows the land as planned',
   'Right-drag, or WASD / arrow keys, to move · mouse wheel or + / − to zoom',
   '1–9, 0 pick a tool · R turns the gatehouse · Esc cancels',
-  'C recentres · G shows the grid · L steps through Modern, Classic, Drab and Painted · H steps through the views',
+  'C recentres · G shows the grid · K shows height lines · L steps through Modern, Classic, Drab and Painted · H steps through the views',
 ];
 
 function describe(file: SaveFile | null | string): string {
@@ -155,6 +155,11 @@ export class GamePanel {
         ['Standard', { view: 'standard' }],
         ['High view', { view: 'high' }],
         ['Low view', { view: 'low' }],
+      ]),
+      el('div', 'dim', 'Height lines mark where the land steps up or down a level. K turns them on and off.'),
+      row('Height lines', [
+        ['Off', { contours: false }],
+        ['On', { contours: true }],
       ]),
       ...this.classicOnly,
     );

@@ -355,6 +355,14 @@ export function takesExtras(p: PieceSpec): boolean {
   return p.kind !== 'keep';
 }
 
+/** A piece with the given extras built in (as switched on while placing). The keep takes none. */
+export function fitExtras(spec: PieceSpec, extras: PieceExtras): PieceSpec {
+  if (!takesExtras(spec)) return spec;
+  const out = { ...spec };
+  for (const e of Object.keys(EXTRAS) as ExtraId[]) if (extras[e]) out[e] = true;
+  return out;
+}
+
 /** Whether a piece has arrow slits: added as an extra, or built in (the keep). */
 export function hasSlits(p: PieceSpec): boolean {
   return p.kind === 'keep' || !!p.slits;
