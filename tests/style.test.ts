@@ -75,7 +75,8 @@ describe('look settings', () => {
   });
 
   it('read back what was stored', () => {
-    expect(parseLook(JSON.stringify({ style: 'classic', view: 'high', pixel: 3, dither: 0.5, surfaces: true }))).toEqual({ style: 'classic', view: 'high', pixel: 3, dither: 0.5, surfaces: true });
+    const look = { style: 'classic', view: 'high', pixel: 3, dither: 0.5, surfaces: true, contours: true } as const;
+    expect(parseLook(JSON.stringify(look))).toEqual(look);
   });
 
   it('take any dither strength from off to full, in 5% steps', () => {
@@ -86,7 +87,13 @@ describe('look settings', () => {
   });
 
   it('keep settings stored before the strength slider and surfaces toggle', () => {
-    expect(parseLook('{"style":"classic","pixel":2,"dither":0.5}')).toEqual({ style: 'classic', view: 'standard', pixel: 2, dither: 0.5, surfaces: false });
+    expect(parseLook('{"style":"classic","pixel":2,"dither":0.5}')).toEqual({ style: 'classic', view: 'standard', pixel: 2, dither: 0.5, surfaces: false, contours: false });
+  });
+
+  it('hide the height lines on the land unless asked for', () => {
+    expect(DEFAULT_LOOK.contours).toBe(false);
+    expect(parseLook('{"contours":true}').contours).toBe(true);
+    expect(parseLook('{"contours":"yes"}').contours).toBe(false);
   });
 
   it('keep the view to Standard, High view or Low view', () => {

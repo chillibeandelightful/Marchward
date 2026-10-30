@@ -11,6 +11,7 @@ import {
 import {
   checkPlacement,
   clearEarthwork,
+  fitExtras,
   isCurtain,
   pieceAt,
   pieceCost,
@@ -40,9 +41,9 @@ export type ToolId = 'look' | 'wall' | 'tower' | 'gatehouse' | 'keep' | 'raise' 
 
 const TOOLS: readonly { id: ToolId; name: string; key: string; help: string }[] = [
   { id: 'look', name: 'Look', key: '1', help: 'Point at land or pieces to see their numbers. Drag to move the view.' },
-  { id: 'wall', name: 'Wall', key: '2', help: 'Drag from one tile to another to lay a line of wall.' },
-  { id: 'tower', name: 'Tower', key: '3', help: 'Click to place. Placing on a wall turns that wall into a tower.' },
-  { id: 'gatehouse', name: 'Gatehouse', key: '4', help: 'Click to place, usually in a wall. R turns the passage.' },
+  { id: 'wall', name: 'Wall', key: '2', help: 'Drag from one tile to another to lay a line of wall. Turn on arrow slits or an oil cauldron to build them into every piece you lay.' },
+  { id: 'tower', name: 'Tower', key: '3', help: 'Click to place. Placing on a wall turns that wall into a tower. Turn on arrow slits or an oil cauldron to build them in.' },
+  { id: 'gatehouse', name: 'Gatehouse', key: '4', help: 'Click to place, usually in a wall. R turns the passage. Turn on arrow slits or an oil cauldron to build them in.' },
   { id: 'keep', name: 'Keep', key: '5', help: 'Covers 2×2 tiles of level ground. Put it inside the walls.' },
   {
     id: 'raise',
@@ -109,6 +110,8 @@ export class Designer {
   towerShape: TowerShape = 'square';
   towerHeight: HeightClass = 'medium';
   extra: ExtraId = 'slits';
+  /** Extras built into every wall, tower and gatehouse as it is placed, so they needn't be added piece by piece. */
+  readonly fitted: Record<ExtraId, boolean> = { slits: false, cauldron: false };
   troop: TroopType = 'archer';
   notice: Notice | null = null;
 
@@ -214,7 +217,7 @@ export class Designer {
 
   /** The pieces the current tool would place right now, checked against the rules. */
   preview(): { specs: PieceSpec[]; check: PlacementCheck } | null {
-    const key = JSON.stringify([this.tool, this.hover, this.dragFrom, this.thickness, this.wallHeight, this.towerShape, this.towerHeight, this.turnGate, this.version]);
+    const key = JSON.stringify([this.tool, this.hover, this.dragFrom, this.thickness, this.wallHeight, this.towerShape, this.towerHeight, this.turnGate, this.fitted, this.version]);
     if (key !== this.previewKey) {
       this.previewKey = key;
       const specs = this.previewSpecs();
@@ -234,6 +237,15 @@ export class Designer {
   }
 
   private previewSpecs(): PieceSpec[] | null {
+    return this.basicSpecs()?.map((s) => this.withFitted(s)) ?? null;
+  }
+
+  /** The extras switched on for placing, added to a wall, tower or gatehouse. */
+  private withFitted(spec: PieceSpec): PieceSpec {
+    return fitExtras(spec, this.fitted);
+  }
+
+  private basicSpecs(): PieceSpec[] | null {
     const h = this.hover;
     if (!h) return null;
     const view = this.host.view();
@@ -368,7 +380,7 @@ export class Designer {
   updatePanel(): void {
     const report = this.host.report();
     const p = this.preview();
-    const key = JSON.stringify([this.tool, this.thickness, this.wallHeight, this.towerShape, this.towerHeight, this.extra, this.troop, this.hover, report, p?.specs, this.clearArmed, this.host.sim.defence.posts.length, this.host.sim.economy.troops]);
+    const key = JSON.stringify([this.tool, this.thickness, this.wallHeight, this.towerShape, this.towerHeight, this.extra, this.fitted, this.troop, this.hover, report, p?.specs, this.clearArmed, this.host.sim.defence.posts.length, this.host.sim.economy.troops]);
     if (key === this.panelKey) return;
     this.panelKey = key;
 
@@ -423,7 +435,8 @@ export class Designer {
       );
       return lines;
     }
-    const sample = p?.specs[0] ?? this.sampleSpec();
+    const fallback = this.sampleSpec();
+    const sample = p?.specs[0] ?? (fallback && this.withFitted(fallback));
     if (!sample) return lines;
     const stats = pieceStats(view, sample);
     lines.push({ text: stats.name, cls: 'head' }, ...statLines(stats));
@@ -465,12 +478,16 @@ export class Designer {
       parts.push(
         choice('Thickness', WALL_THICKNESS, this.thickness, (v) => (this.thickness = v), this),
         choice('Height', WALL_HEIGHT, this.wallHeight, (v) => (this.wallHeight = v), this),
+        toggles('Build in', EXTRAS, this.fitted, this),
       );
     } else if (this.tool === 'tower') {
       parts.push(
         choice('Shape', TOWER_SHAPE, this.towerShape, (v) => (this.towerShape = v), this),
         choice('Height', TOWER_HEIGHT, this.towerHeight, (v) => (this.towerHeight = v), this),
+        toggles('Build in', EXTRAS, this.fitted, this),
       );
+    } else if (this.tool === 'gatehouse') {
+      parts.push(toggles('Build in', EXTRAS, this.fitted, this));
     } else if (this.tool === 'extras') {
       parts.push(choice('Extra', EXTRAS, this.extra, (v) => (this.extra = v), this));
     } else if (this.tool === 'troops') {
@@ -542,6 +559,25 @@ function choice<K extends string>(
     const b = button(options[k].name, k === current);
     b.addEventListener('click', () => {
       set(k);
+      designer.optionsChanged();
+    });
+    row.append(b);
+  }
+  return row;
+}
+
+/** A row of on/off buttons, one per option; any number can be on at once. */
+function toggles<K extends string>(label: string, options: Record<K, { name: string }>, on: Record<K, boolean>, designer: Designer): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'option-row';
+  const name = document.createElement('span');
+  name.textContent = label;
+  row.append(name);
+  for (const k of Object.keys(options) as K[]) {
+    const b = button(`${on[k] ? '✓' : '○'} ${options[k].name}`, on[k]);
+    b.dataset.extra = k;
+    b.addEventListener('click', () => {
+      on[k] = !on[k];
       designer.optionsChanged();
     });
     row.append(b);

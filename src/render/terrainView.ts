@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite } from 'pixi.js';
+import { Container, Graphics, Sprite, type FillInput } from 'pixi.js';
 import { hash2 } from '../sim/noise';
 import { heightAt, inBounds, stepBetween, terrainAt, type TerrainMap } from '../sim/terrain';
 import type { SpriteAssets, SpriteName } from './assets';
@@ -68,6 +68,7 @@ export class TerrainView {
   private readonly land = new Container();
   private readonly hover = new Graphics();
   private grid = false;
+  private contours = false;
   private rows: { ground: Graphics; shadow: Graphics; sprites: Container; extra: Graphics; actors: Graphics }[] = [];
   private usedActors = new Set<number>();
   private decor = new Map<number, Sprite[]>();
@@ -96,6 +97,17 @@ export class TerrainView {
   setGrid(on: boolean): void {
     if (on === this.grid) return;
     this.grid = on;
+    this.build();
+  }
+
+  get contoursVisible(): boolean {
+    return this.contours;
+  }
+
+  /** Show or hide the height lines on the land. */
+  setContours(on: boolean): void {
+    if (on === this.contours) return;
+    this.contours = on;
     this.build();
   }
 
@@ -233,7 +245,6 @@ export class TerrainView {
   private drawTile(g: Graphics, sprites: Container, s: TileShape): void {
     const terrain = terrainAt(this.map, s.x, s.y);
     const pal = style().terrain;
-    for (const f of s.faces) this.drawFace(g, f);
 
     // Slopes are lit by how they face the sun, compared with flat ground.
     const c = s.corners;
@@ -245,11 +256,14 @@ export class TerrainView {
     const light = sunFacingLight(normal) / sunFacingLight(FACE.top) + 0.05 * (s.level - 2) + (hash2(s.x, s.y, 7) - 0.5) * pal.grain;
     const painted = paintedTexture(`ground.${terrain.id}`);
     // Painted ground is laid on in screen space, so it runs on across tiles; it is drawn bright and shaded down (see docs/ART.md).
-    if (painted) g.poly(flat(s.top)).fill({ texture: painted, textureSpace: 'global', color: shade(0xffffff, Math.min(1, light * GROUND_SHADE)) });
-    else g.poly(flat(s.top)).fill(shade(pal.ground[terrain.id], light));
+    const ground: FillInput = painted
+      ? { texture: painted, textureSpace: 'global', color: shade(0xffffff, Math.min(1, light * GROUND_SHADE)) }
+      : shade(pal.ground[terrain.id], light);
+    for (const f of s.faces) this.drawFace(g, s, f, terrain.water ? null : ground);
+    g.poly(flat(s.top)).fill(ground);
     if (pal.speckle && !terrain.water && !painted) this.drawSpeckle(g, s, pal.speckle, light);
     if (this.grid) g.poly(flat(s.top)).stroke({ width: 1, color: pal.grid, alpha: 0.35 });
-    this.drawContours(g, s, terrain.water);
+    if (this.contours) this.drawContours(g, s, terrain.water);
 
     switch (terrain.id) {
       case 'road':
@@ -279,7 +293,7 @@ export class TerrainView {
       }
     }
 
-    for (const d of decorFor(terrain.id, s.x, s.y)) {
+    for (const d of decorFor(this.map, s.x, s.y)) {
       const art = this.assets.get(d.name, Math.floor(hash2(s.x, s.y, 90 + d.u * 10) * 12));
       const p = this.point(s, d.u, d.v);
       const sprite = new Sprite(art.texture);
@@ -324,21 +338,29 @@ export class TerrainView {
     }
   }
 
-  private drawFace(g: Graphics, f: Face): void {
+  /**
+   * A bank or cliff below the tile's front edge, facing +y (left) or +x (right), lit like the
+   * castle's faces. A drop of two levels or more is a cliff of rock; a single step is an earth
+   * bank with the turf hanging over its lip, wet at the foot where it meets water. The map's rim
+   * is left plain.
+   */
+  private drawFace(g: Graphics, s: TileShape, f: Face, turf: FillInput | null): void {
     const pal = style().terrain;
-    const base = pal.face[f.kind];
-    // Banks and cliffs face +y (left) or +x (right), and are lit like castle faces.
-    g.poly(flat(f.points)).fill(surfaceColour(f.side === 'left' ? FACE.left : FACE.right, base));
-    if (f.kind !== 'cliff') return;
-    // Rock strata at each whole level, so the height of a cliff can be counted.
-    const [a, b] = f.points as [Pt, Pt];
-    const { topA, topB, bottomA, bottomB } = f.levels;
-    for (let lv = Math.ceil(Math.max(bottomA, bottomB)); lv < Math.min(topA, topB); lv++) {
-      if (lv <= Math.max(bottomA, bottomB)) continue;
-      g.moveTo(a.x, a.y + (topA - lv) * levelPx())
-        .lineTo(b.x, b.y + (topB - lv) * levelPx())
-        .stroke({ width: 1, color: pal.strata, alpha: 0.8 });
+    const colour = surfaceColour(f.side === 'left' ? FACE.left : FACE.right, pal.face[f.kind]);
+    g.poly(flat(f.points)).fill(colour);
+    if (f.kind === 'edge') return;
+    const frame = faceFrame(f);
+    // A sliver where a slope meets a step: too small to dress.
+    if (frame.deepest < 0.25) return;
+    const side = f.side === 'right' ? 1 : 0;
+    const h = (salt: number) => hash2(s.x * 2 + side, s.y, salt);
+    if (f.kind === 'cliff') {
+      drawRockFace(g, f, frame, colour, turf, h);
+      return;
     }
+    const [nx, ny] = f.side === 'right' ? [s.x + 1, s.y] : [s.x, s.y + 1];
+    const water = inBounds(this.map, nx, ny) && terrainAt(this.map, nx, ny).water;
+    drawEarthBank(g, frame, colour, water, turf, h);
   }
 
   /** A road, or a line of stepping stones across a ford, joining neighbouring road and ford tiles. */
@@ -391,7 +413,8 @@ const ROAD_LINKS = [
 ] as const;
 
 /** Sprites standing on a tile, sorted back to front. Positions come from a hash, so they never change. */
-function decorFor(id: string, x: number, y: number): Decor[] {
+export function decorFor(map: TerrainMap, x: number, y: number): Decor[] {
+  const id = terrainAt(map, x, y).id;
   const out: Decor[] = [];
   const jitter = (salt: number) => (hash2(x, y, salt) - 0.5) * 0.16;
   switch (id) {
@@ -419,6 +442,26 @@ function decorFor(id: string, x: number, y: number): Decor[] {
     case 'grass':
       if (hash2(x, y, 160) < 0.35) out.push({ name: 'tuft', u: jitter(161) * 3, v: jitter(162) * 3 });
       break;
+    case 'shallow':
+    case 'deep': {
+      // Reeds along the foot of a bank behind the water (the banks the camera sees), thinner in deep water.
+      const chance = id === 'shallow' ? 0.7 : 0.35;
+      const level = heightAt(map, x, y);
+      for (const [dx, dy] of [
+        [-1, 0],
+        [0, -1],
+      ] as const) {
+        if (!inBounds(map, x + dx, y + dy) || terrainAt(map, x + dx, y + dy).water || heightAt(map, x + dx, y + dy) <= level) continue;
+        for (let k = 0; k < 3; k++) {
+          const salt = 170 + (dx < 0 ? 0 : 10) + k;
+          if (hash2(x, y, salt) > chance) continue;
+          const along = -0.32 + k * 0.32 + jitter(salt + 20);
+          const off = -0.38 + Math.abs(jitter(salt + 40));
+          out.push(dx < 0 ? { name: 'reeds', u: off, v: along } : { name: 'reeds', u: along, v: off });
+        }
+      }
+      break;
+    }
   }
   return out.sort((a, b) => a.u + a.v - (b.u + b.v));
 }
@@ -430,6 +473,138 @@ function spriteCaster(name: SpriteName, at: P2, w: number, h: number): Caster | 
   // Half the sprite's width across the screen, in world tiles.
   const half = ((w / 2) * Math.SQRT2) / viewAngle().tileW;
   return { rings: shape.map(([up, r]) => ({ outline: circle(at.x, at.y, Math.max(0.01, r * half), 10), height: up * h })) };
+}
+
+/** Points on a face: `at(t, down)` is `t` (0 to 1) along its top edge and `down` levels below it, never below its foot. */
+interface FaceFrame {
+  at(t: number, down: number): Pt;
+  /** Height of the face at `t`, in levels. */
+  depth(t: number): number;
+  deepest: number;
+}
+
+function faceFrame(f: Face): FaceFrame {
+  const [a, b] = f.points as [Pt, Pt];
+  const { topA, topB, bottomA, bottomB } = f.levels;
+  const depth = (t: number) => topA - bottomA + (topB - bottomB - (topA - bottomA)) * t;
+  return {
+    at: (t, down) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t + Math.max(0, Math.min(down, depth(t))) * levelPx() }),
+    depth,
+    deepest: Math.max(topA - bottomA, topB - bottomB),
+  };
+}
+
+/** A band across a face from `from` to `to` levels down (each a function of `t`), as a polygon. */
+function band(frame: FaceFrame, from: (t: number) => number, to: (t: number) => number, t0 = 0, t1 = 1, steps = 4): number[] {
+  const top: Pt[] = [];
+  const bottom: Pt[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = t0 + ((t1 - t0) * i) / steps;
+    top.push(frame.at(t, from(t)));
+    bottom.push(frame.at(t, to(t)));
+  }
+  return flat([...top, ...bottom.reverse()]);
+}
+
+/**
+ * Bare rock: columns a shade lighter or darker split by joints, broken bedding lines (one at each
+ * whole level, so the height can still be counted), a sunlit lip and a shadowed foot.
+ */
+function drawRockFace(g: Graphics, f: Face, frame: FaceFrame, colour: number, turf: FillInput | null, h: (salt: number) => number): void {
+  const pal = style().terrain;
+  const rock = paintedTexture('ground.rock');
+  if (rock) g.poly(flat(f.points)).fill({ texture: rock, textureSpace: 'global', color: shade(colour, 1.5), alpha: 0.7 });
+  const cuts = [0];
+  for (let i = 0, t = 0; ; i++) {
+    t += 0.14 + h(300 + i) * 0.18;
+    if (t > 0.9) break;
+    cuts.push(t);
+  }
+  cuts.push(1);
+  const foot = (t: number) => frame.depth(t);
+  const { topA, topB } = f.levels;
+  const bottom = Math.max(f.levels.bottomA, f.levels.bottomB);
+  for (let k = 0; k + 1 < cuts.length; k++) {
+    const t0 = cuts[k] as number;
+    const t1 = cuts[k + 1] as number;
+    g.poly(band(frame, () => 0, foot, t0, t1, 1)).fill({ color: shade(colour, 0.86 + h(320 + k) * 0.28), alpha: 0.4 });
+    // Bedding: each column's layers tilt and sit a little higher or lower than its neighbours'.
+    const tilt = (h(330 + k) - 0.5) * 0.16;
+    const shift = (h(335 + k) - 0.5) * 0.24;
+    for (let lv = Math.ceil(bottom); lv < Math.min(topA, topB); lv++) {
+      if (lv <= bottom || h(340 + k * 7 + lv) < 0.2) continue;
+      const down = (t: number) => topA + (topB - topA) * t - lv + shift;
+      const p0 = frame.at(t0 + 0.01, down(t0) - tilt);
+      const p1 = frame.at(t1 - 0.01, down(t1) + tilt);
+      g.moveTo(p0.x, p0.y).lineTo(p1.x, p1.y).stroke({ width: 1, color: pal.strata, alpha: 0.6 });
+      // The ledge of each layer catches the light.
+      g.moveTo(p0.x, p0.y + 1).lineTo(p1.x, p1.y + 1).stroke({ width: 1, color: shade(colour, 1.4), alpha: 0.35 });
+    }
+  }
+  const crack = { width: 1, color: shade(colour, 0.45), alpha: 0.8 };
+  for (let k = 1; k + 1 < cuts.length; k++) {
+    const t = cuts[k] as number;
+    const depth = frame.depth(t);
+    const start = h(360 + k) * depth * 0.3;
+    const end = depth * (0.6 + h(365 + k) * 0.4);
+    const p0 = frame.at(t, start);
+    g.moveTo(p0.x, p0.y);
+    for (let j = 1; j <= 4; j++) {
+      const p = frame.at(t + (h(370 + k * 5 + j) - 0.5) * 0.06, start + ((end - start) * j) / 4);
+      g.lineTo(p.x, p.y);
+    }
+    g.stroke(crack);
+  }
+  g.poly(band(frame, () => 0, () => 0.07)).fill({ color: shade(colour, 1.45), alpha: 0.6 });
+  g.poly(band(frame, (t) => frame.depth(t) - 0.4, foot)).fill({ color: 0x000000, alpha: 0.2 });
+  if (turf) drawTurfLip(g, frame, turf, 0.08, h);
+}
+
+/**
+ * An earth bank one level high: soil darkening low down with a few stones and roots in it, the
+ * turf of the land above hanging over the lip, and wet mud at the foot where it stands in water.
+ */
+function drawEarthBank(g: Graphics, frame: FaceFrame, colour: number, water: boolean, turf: FillInput | null, h: (salt: number) => number): void {
+  const pal = style().terrain;
+  const foot = (t: number) => frame.depth(t);
+  g.poly(band(frame, () => 0, (t) => frame.depth(t) * 0.45)).fill({ color: shade(colour, 1.25), alpha: 0.7 });
+  g.poly(band(frame, (t) => frame.depth(t) * 0.6, foot)).fill({ color: shade(colour, 0.85), alpha: 0.6 });
+  if (water) {
+    g.poly(band(frame, (t) => frame.depth(t) - 0.2, foot)).fill({ color: shade(colour, 0.55), alpha: 0.85 });
+    const a = frame.at(0, 9);
+    const b = frame.at(1, 9);
+    g.moveTo(a.x, a.y - 1).lineTo(b.x, b.y - 1).stroke({ width: 1, color: pal.ripple, alpha: 0.45 });
+  }
+  for (let i = 0; i < 4; i++) {
+    if (h(400 + i) < 0.35) continue;
+    const t = 0.1 + h(410 + i) * 0.8;
+    const p = frame.at(t, frame.depth(t) * (0.35 + h(420 + i) * 0.4));
+    g.ellipse(p.x, p.y, 2 + h(430 + i) * 1.5, 1.3).fill(shade(pal.fordStone, 0.75 + h(440 + i) * 0.3));
+  }
+  const root = { width: 1, color: shade(colour, 0.45), alpha: 0.75 };
+  for (let i = 0; i < 2; i++) {
+    if (h(450 + i) < 0.4) continue;
+    const t = 0.15 + h(460 + i) * 0.7;
+    const p0 = frame.at(t, 0.1);
+    const p1 = frame.at(t + 0.03, 0.22);
+    const p2 = frame.at(t - 0.01, 0.1 + frame.depth(t) * 0.35);
+    g.moveTo(p0.x, p0.y).quadraticCurveTo(p1.x, p1.y, p2.x, p2.y).stroke(root);
+  }
+  if (turf) drawTurfLip(g, frame, turf, 0.16, h);
+}
+
+/** The turf of the land above, its ragged edge hanging up to `reach` levels over the lip of a bank or cliff. */
+function drawTurfLip(g: Graphics, frame: FaceFrame, turf: FillInput, reach: number, h: (salt: number) => number): void {
+  const top: Pt[] = [];
+  const hang: Pt[] = [];
+  const n = 16;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    top.push(frame.at(t, 0));
+    const r = h(470 + i);
+    hang.push(frame.at(t, i === 0 || i === n ? 0.02 : 0.02 + r * r * reach));
+  }
+  g.poly(flat([...top, ...hang.reverse()])).fill(turf);
 }
 
 function flat(pts: readonly { x: number; y: number }[]): number[] {

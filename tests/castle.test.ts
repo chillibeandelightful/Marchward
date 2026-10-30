@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { EARTHWORKS, WALL_BASE_COST } from '../src/data/castle';
+import { EXTRAS } from '../src/data/combat';
 import type { TerrainId } from '../src/data/terrain';
 import {
   adjustEarthwork,
   checkPlacement,
   createPlan,
+  fitExtras,
   pieceAt,
+  pieceCost,
   pieceStats,
   placePieces,
   planReport,
@@ -138,6 +141,29 @@ describe('placing pieces', () => {
     expect(removePieceAt(plan, 3, 3)).toBe(true);
     expect(plan.pieces).toHaveLength(0);
     expect(removePieceAt(plan, 3, 3)).toBe(false);
+  });
+});
+
+describe('extras built in while placing', () => {
+  it('puts the switched-on extras on every piece of a line, and charges for them', () => {
+    const map = flatMap(10);
+    const plan = createPlan(map);
+    const specs = line([1, 1], [5, 1]).map((s) => fitExtras(s, { slits: true, cauldron: false }));
+    const plain = checkPlacement(map, plan, line([1, 1], [5, 1])).cost;
+    const check = placePieces(map, plan, specs);
+    expect(check.problem).toBeNull();
+    expect(plan.pieces).toHaveLength(5);
+    expect(plan.pieces.every((p) => p.slits && !p.cauldron)).toBe(true);
+    expect(check.cost.stone).toBe(plain.stone + 5 * EXTRAS.slits.cost.stone);
+    expect(pieceCost(map, plan.pieces[0] as PieceSpec).labour).toBe(pieceCost(map, wall(1, 1)).labour + EXTRAS.slits.cost.labour);
+  });
+
+  it('fits towers and the gatehouse too, but never the keep', () => {
+    const both = { slits: true, cauldron: true };
+    expect(fitExtras({ kind: 'tower', x: 1, y: 1, shape: 'round', height: 'high' }, both)).toMatchObject(both);
+    expect(fitExtras({ kind: 'gatehouse', x: 1, y: 1, axis: 'x' }, both)).toMatchObject(both);
+    expect(fitExtras({ kind: 'keep', x: 1, y: 1 }, both)).toEqual({ kind: 'keep', x: 1, y: 1 });
+    expect(fitExtras(wall(1, 1), {})).toEqual(wall(1, 1));
   });
 });
 

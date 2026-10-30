@@ -1,4 +1,4 @@
-import { Matrix, type Graphics, type Texture } from 'pixi.js';
+import { Matrix, type Graphics, type StrokeStyle, type Texture } from 'pixi.js';
 import { WALL_THICKNESS } from '../data/castle';
 import {
   footprint,
@@ -60,6 +60,19 @@ interface Box {
   base: number;
   top: number;
 }
+
+/** A wall's arm through its tile along one axis, from and to offsets from the tile centre. */
+interface Arm {
+  axis: 'x' | 'y';
+  from: number;
+  to: number;
+}
+
+/** Ends of a box that run on into more wall, so get no outline. */
+type Open = Partial<Record<'x0' | 'x1' | 'y0' | 'y1', boolean>>;
+
+/** How far a wall reaches into the next piece at a join, in tiles. */
+const JOIN_OVERLAP = 0.04;
 
 /**
  * Draws castle pieces in code. Pieces are drawn with the diagonal row of their front-most tile,
@@ -249,32 +262,49 @@ export class CastleArt implements RowExtras {
     return Number.isFinite(low) ? low : 0;
   }
 
-  /** A wall is an arm from the tile centre towards each linked neighbour (or a stub if alone). */
+  /**
+   * A wall is an arm from the tile centre towards each linked neighbour (or a stub if alone). A
+   * straight run through the tile is one box, and joins with the next piece carry no outline, so
+   * a line of wall reads as one stretch of masonry rather than a row of slabs.
+   */
   private drawWall(g: Graphics, p: Extract<PieceSpec, { kind: 'wall' }>, base: number, top: number, pal: Palette, finished = true): void {
     const hw = WALL_THICKNESS[p.thickness].width / 2;
     const { x, y } = p;
     const links = NEIGHBOURS.filter(([dx, dy]) => this.linksTo(p, x + dx, y + dy));
+    const has = (dx: number, dy: number) => links.some(([lx, ly]) => lx === dx && ly === dy);
+    const arms: Arm[] = [];
+    for (const axis of ['x', 'y'] as const) {
+      const [back, front] = axis === 'x' ? [has(-1, 0), has(1, 0)] : [has(0, -1), has(0, 1)];
+      if (back && front) arms.push({ axis, from: -0.5, to: 0.5 });
+      else if (back) arms.push({ axis, from: -0.5, to: hw });
+      else if (front) arms.push({ axis, from: -hw, to: 0.5 });
+    }
     // Back arms first, then front arms, so the nearer faces end up on top.
-    const arms = [...links].sort((a, b) => a[0] + a[1] - (b[0] + b[1]));
-    const boxes: Box[] =
-      arms.length === 0
-        ? [{ x0: x - hw, y0: y - hw, x1: x + hw, y1: y + hw, base, top }]
-        : arms.map(([dx, dy]) => ({
-            x0: dx < 0 ? x - 0.5 : x - hw,
-            x1: dx > 0 ? x + 0.5 : x + hw,
-            y0: dy < 0 ? y - 0.5 : y - hw,
-            y1: dy > 0 ? y + 0.5 : y + hw,
-            base,
-            top,
-          }));
-    for (const b of boxes) drawBox(g, b, pal, true);
+    arms.sort((a, b) => a.from + a.to - (b.from + b.to));
+    const boxes: Box[] = arms.map((a) =>
+      a.axis === 'x'
+        ? { x0: x + a.from, x1: x + a.to, y0: y - hw, y1: y + hw, base, top }
+        : { x0: x - hw, x1: x + hw, y0: y + a.from, y1: y + a.to, base, top },
+    );
+    if (boxes.length === 0) boxes.push({ x0: x - hw, y0: y - hw, x1: x + hw, y1: y + hw, base, top });
+    boxes.forEach((b, i) => {
+      const a = arms[i];
+      if (!a) return drawBox(g, b, pal, true);
+      const open: Open = a.axis === 'x' ? { x0: a.from === -0.5, x1: a.to === 0.5 } : { y0: a.from === -0.5, y1: a.to === 0.5 };
+      // Reach a hair into the next piece, which is drawn later and covers it, so no seam shows at the join.
+      const drawn = a.axis === 'x' ? { ...b, x1: b.x1 + (open.x1 ? JOIN_OVERLAP : 0) } : { ...b, y1: b.y1 + (open.y1 ? JOIN_OVERLAP : 0) };
+      drawBox(g, drawn, pal, true, open);
+    });
     if (!finished) return;
     if (p.slits)
-      for (const [i, [dx, dy]] of arms.entries()) {
+      for (const [i, a] of arms.entries()) {
         const b = boxes[i] as Box;
-        // Slits on the visible face of each arm, a little below the walk.
-        if (dx !== 0) slit(g, b, 'left', (b.x0 + b.x1) / 2, top - 0.95, 0.035, 0.5, pal.dark);
-        if (dy !== 0) slit(g, b, 'right', (b.y0 + b.y1) / 2, top - 0.95, 0.035, 0.5, pal.dark);
+        // Slits on the visible face of each arm, about one per half tile, a little below the walk.
+        const n = Math.max(1, Math.round((a.to - a.from) * 2));
+        for (let k = 0; k < n; k++) {
+          const at = (a.axis === 'x' ? x : y) + a.from + ((k + 0.5) * (a.to - a.from)) / n;
+          slit(g, b, a.axis === 'x' ? 'left' : 'right', at, top - 0.95, 0.035, 0.5, pal.dark);
+        }
       }
     if (p.slits && arms.length === 0) {
       const b = boxes[0] as Box;
@@ -282,10 +312,7 @@ export class CastleArt implements RowExtras {
       slit(g, b, 'right', y, top - 0.95, 0.035, 0.5, pal.dark);
     }
     const merlons: Box[] = [];
-    arms.forEach(([dx], i) => {
-      const b = boxes[i] as Box;
-      merlons.push(...edgeMerlons(b, dx !== 0 ? 'x' : 'y'));
-    });
+    arms.forEach((a, i) => merlons.push(...edgeMerlons(boxes[i] as Box, a.axis)));
     if (arms.length === 0) merlons.push(...ringMerlons(boxes[0] as Box));
     drawMerlons(g, merlons, pal, boxes.map(topOf), top);
   }
@@ -388,7 +415,7 @@ function topOf(b: Box): P2[] {
 }
 
 /** The three visible faces of a box, each lit by how it faces the sun: the top, the +y face (left) and the +x face (right). */
-function drawBox(g: Graphics, b: Box, pal: Palette, courses = false): void {
+function drawBox(g: Graphics, b: Box, pal: Palette, courses = false, open: Open = {}): void {
   const { x0, y0, x1, y1, base, top } = b;
   const { masonry, outline } = style().castle;
   if (sink) sink.push(boxCaster(x0, y0, x1, y1, (base - casterGround) * levelPx(), (top - casterGround) * levelPx()));
@@ -412,14 +439,29 @@ function drawBox(g: Graphics, b: Box, pal: Palette, courses = false): void {
         .stroke({ width: 0.7, color: pal.dark, alpha: 0.18 });
     }
   }
-  if (outline > 0) {
-    g.poly(left).stroke({ width: outline, color: pal.dark, alpha: 0.85, join: 'round' });
-    g.poly(right).stroke({ width: outline, color: pal.dark, alpha: 0.85, join: 'round' });
-  }
+  const line = outline > 0 ? { width: outline, color: pal.dark, alpha: 0.85, join: 'round' as const, cap: 'round' as const } : null;
+  // A face that runs on into the next piece is hidden by it, and its outline with it.
+  if (line && !open.y1) outlineQuad(g, left, [true, !open.x0, true, !open.x1], line);
+  if (line && !open.x1) outlineQuad(g, right, [true, !open.y1, true, !open.y0], line);
   const flags = stoneArt(pal, 'stoneTop');
-  g.poly([...pt(x0, y0, top), ...pt(x1, y0, top), ...pt(x1, y1, top), ...pt(x0, y1, top)])
-    .fill(flags ? paint(flags, stoneMatrix('top', top), surfaceColour(FACE.top)) : surfaceColour(FACE.top, pal.top))
-    .stroke(outline > 0 ? { width: outline, color: pal.dark, alpha: 0.85, join: 'round' } : { width: 0.8, color: pal.dark, alpha: 0.35 });
+  const roof = [...pt(x0, y0, top), ...pt(x1, y0, top), ...pt(x1, y1, top), ...pt(x0, y1, top)];
+  g.poly(roof).fill(flags ? paint(flags, stoneMatrix('top', top), surfaceColour(FACE.top)) : surfaceColour(FACE.top, pal.top));
+  outlineQuad(g, roof, [!open.y0, !open.x1, !open.y1, !open.x0], line ?? { width: 0.8, color: pal.dark, alpha: 0.35, cap: 'round' as const });
+}
+
+/** Stroke the edges of a quad (as flat x, y pairs) that are marked to be drawn; edge i runs from point i to point i + 1. */
+function outlineQuad(g: Graphics, quad: number[], edges: readonly boolean[], line: StrokeStyle): void {
+  if (edges.every((e) => e)) {
+    g.poly(quad).stroke(line);
+    return;
+  }
+  for (let i = 0; i < 4; i++) {
+    if (!edges[i]) continue;
+    const j = (i + 1) % 4;
+    g.moveTo(quad[i * 2] as number, quad[i * 2 + 1] as number)
+      .lineTo(quad[j * 2] as number, quad[j * 2 + 1] as number)
+      .stroke(line);
+  }
 }
 
 /** Height of one course of blocks, in levels, and the length of a block, in tiles. */

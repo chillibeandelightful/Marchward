@@ -124,6 +124,7 @@ async function start(): Promise<void> {
   art.setProgress((p) => pieceProgress(sim.map, sim.works, p));
   art.setRubble((p) => (sim.defence.battle?.pieces[p.id]?.breachedAt ?? null) !== null);
   const terrain = new TerrainView(shownMap(), shapes, new PaintedAssets(new ProceduralAssets(app.renderer)), art);
+  terrain.setContours(look.contours);
   const ghosts = new Graphics();
   // Smoke rises over everything on the land, so it is drawn above all the rows.
   const sky = new Graphics();
@@ -290,6 +291,7 @@ async function start(): Promise<void> {
   function applyLook(next: Look): void {
     const restyled = next.style !== look.style;
     const turned = next.view !== look.view;
+    const lined = next.contours !== look.contours;
     look = next;
     storeLook(look);
     setStyle(look.style);
@@ -302,6 +304,7 @@ async function start(): Promise<void> {
     app.renderer.background.color = s.background;
     effect.configure(s.retro, look.pixel, look.dither, look.surfaces, palette());
     gamePanel.showLook();
+    if (lined) terrain.setContours(look.contours);
     if (!restyled) return;
     frame.relayout();
     if (s.ui !== 'classic') toolsEl?.style.removeProperty('top');
@@ -420,6 +423,7 @@ async function start(): Promise<void> {
     else if (e.code === 'KeyT') topDownAllowed = !topDownAllowed;
     else if (e.code === 'Backquote') tunePanel.toggle();
     else if (e.code === 'KeyH') applyLook({ ...look, view: VIEW_ORDER[(VIEW_ORDER.indexOf(look.view) + 1) % VIEW_ORDER.length] ?? 'standard' });
+    else if (e.code === 'KeyK') applyLook({ ...look, contours: !look.contours });
     else if (e.code === 'KeyL') applyLook({ ...look, style: STYLE_ORDER[(STYLE_ORDER.indexOf(look.style) + 1) % STYLE_ORDER.length] ?? 'modern' });
   });
   window.addEventListener('resize', () => frame.relayout());
