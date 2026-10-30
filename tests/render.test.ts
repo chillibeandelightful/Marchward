@@ -7,6 +7,7 @@ import { frontDiagonal, pickPiece } from '../src/render/castleArt';
 import { drawnLevels, isoToScreen, setViewAngle, setViewTuning, viewAngle, VIEWS } from '../src/render/iso';
 import { parseTuning } from '../src/ui/tunePanel';
 import { buildTileShapes, pickTile, tileCorners } from '../src/render/tileGeometry';
+import { decorFor } from '../src/render/terrainView';
 import { KEEP, WALL_THICKNESS } from '../src/data/castle';
 import { foundationOutline, TOWER_HALF } from '../src/render/foundation';
 import { isoToTile, pickPlanTile, PLAN_TILE, planToTile, tileToIso, tileToPlan, wantsTopDown } from '../src/render/topDown';
@@ -72,6 +73,25 @@ describe('tile corners', () => {
     const shapes = buildTileShapes(mapFrom([[3, 1]]));
     const top = shapes.find((s) => s.x === 0);
     expect(top?.faces.find((f) => f.side === 'right')?.kind).toBe('cliff');
+  });
+});
+
+describe('river banks', () => {
+  it('grow reeds at the foot of a bank behind the water, and nowhere else in it', () => {
+    // A strip of grass a level up behind two rows of shallow water.
+    const width = 40;
+    const types: TerrainMap['types'] = [];
+    const heights: number[] = [];
+    for (let y = 0; y < 3; y++)
+      for (let x = 0; x < width; x++) {
+        types.push(y === 0 ? 'grass' : 'shallow');
+        heights.push(y === 0 ? 2 : 1);
+      }
+    const map: TerrainMap = { width, height: 3, heights, types };
+    const atBank = Array.from({ length: width }, (_, x) => decorFor(map, x, 1)).flat();
+    expect(atBank.length).toBeGreaterThan(width / 2);
+    expect(atBank.every((d) => d.name === 'reeds' && d.v < -0.25)).toBe(true);
+    for (let x = 0; x < width; x++) expect(decorFor(map, x, 2)).toEqual([]);
   });
 });
 

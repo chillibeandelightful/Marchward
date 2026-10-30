@@ -12,9 +12,11 @@ export interface Look {
   dither: number;
   /** Dither only big surfaces (the ground, castle stone and sky), leaving trees, figures and effects plain. */
   surfaces: boolean;
+  /** Faint lines on the land where it steps up or down a level, like contours on a map. */
+  contours: boolean;
 }
 
-export const DEFAULT_LOOK: Look = { style: 'modern', view: 'standard', pixel: 2, dither: 1, surfaces: false };
+export const DEFAULT_LOOK: Look = { style: 'modern', view: 'standard', pixel: 2, dither: 1, surfaces: false, contours: false };
 const KEY = 'marchward.look';
 
 /** Read stored look settings, falling back to the defaults for anything missing or odd. */
@@ -32,6 +34,7 @@ export function parseLook(text: string | null): Look {
     pixel: raw.pixel === 1 || raw.pixel === 2 || raw.pixel === 3 ? raw.pixel : DEFAULT_LOOK.pixel,
     dither: typeof raw.dither === 'number' && raw.dither >= 0 && raw.dither <= 1 ? Math.round(raw.dither * 20) / 20 : DEFAULT_LOOK.dither,
     surfaces: typeof raw.surfaces === 'boolean' ? raw.surfaces : DEFAULT_LOOK.surfaces,
+    contours: typeof raw.contours === 'boolean' ? raw.contours : DEFAULT_LOOK.contours,
   };
 }
 

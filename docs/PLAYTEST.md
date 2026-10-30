@@ -165,3 +165,14 @@ After each milestone, add a section:
 - **Tune the sun:** press **`** (or add `?tune`). Under **Sun and shadows**: sun direction (0 is straight from the left, 90 from behind you), sun height (lower is longer shadows), light on the shaded side, warm sun and cool shade, and cast shadow darkness. Changes show at once and are kept when you reload; **Copy numbers** gives a line to paste to me so I can make them the default.
 - **The questions:** side by side with the mockups, does the castle have more depth? Are the shaded sides too dark or not dark enough? Are the shadows the right length and darkness?
 **Known issues:** shadows fall on the ground only, so a tall tower's shadow doesn't darken the wall beside it. Banks and cliffs don't cast shadows. The other styles get the same lighting.
+
+## Playtest fixes: walls, height lines, extras and banks (2026-10-30)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- **Wall lines:** pick **Classic** or **Painted**, build or load a castle with long straight walls and zoom in. The faces should read as one stretch of stone, with no dark vertical line at each tile or half tile. Corners and the ends of walls still have their edges.
+- **Height lines:** the faint lines across hills are gone. Press **K**, or Game → Look → Height lines → On, to bring them back and compare; your choice is remembered.
+- **Extras while placing:** pick the Wall tool (2). Under Thickness and Height there is a **Build in** row: switch on Arrow slits and/or Oil cauldron, then drag a line of wall. Every piece gets them, and the cost shown includes them. The same row is on the Tower (3) and Gatehouse (4) tools. Switch them off to lay plain wall.
+- **Banks and cliffs:** look at the river banks: earth with turf hanging over the top, wet mud at the waterline and reeds growing along the foot. Then the crag: the cliffs are now rock, with cracks and layers, rather than flat slabs. Dig a sheer cut (Lower with Shift) to see a one-level earth bank on dry land.
+- **The questions:** do the walls look clean now? Do you prefer the land with or without height lines? Do the banks and cliffs look intentional, or would you rather the river banks sloped gently down to the water?
+**Known issues:** the river banks are still upright steps (dressed with reeds) rather than gentle slopes. The map's outer rim is still plain.
+
