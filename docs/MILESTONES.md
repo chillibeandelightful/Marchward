@@ -104,9 +104,17 @@ Drawn art in the spirit of the two reference mockups: painted stone blocks, dark
 ## M9 – Atmosphere and heraldry
 - Village generation, wandering villagers (who flee to the gate during raids), roads.
 - Banner designer; banners on towers and troops.
-- Seasonal visuals (in both visual styles).
+- Ambient life (playtest request, 2026-10-29), drawn to scale with the castle and soldiers. Purely cosmetic, never blocks or fights anything:
+  - deer that graze at forest edges and bolt away from raiders and workers;
+  - a small one- or two-person fishing boat drifting on the river, and the odd villager fishing from the bank;
+  - a couple of dogs chasing each other across open ground (round the village once it exists);
+  - in Legend mode only, one folklore creature: marsh lights (a few pale floating lights that drift over marsh and still water at dusk, and go out if anyone walks near). More can follow Legend mode's combat creatures.
+  - Kept rare and low in number (a handful on screen at most) so it adds life without clutter; counts and chances live in `src/data/ambient.ts`.
+- Seasonal visuals in every visual style: grass colour shifts, autumn trees, bare trees in winter. Painted gets tinted versions first; hand-drawn seasonal sets stay in Stretch.
+- Winter weather per region, set in the region data: snow on the ground and on castle tops in upland and northern sites (heavy in the High Passes and Crag Moor), frost and frozen marsh pools in the Saltmarsh and Blackwater Fen, and just frost and bare trees in gentle sites like Greenhollow. Light falling snow or mist on some winter days. Marsh that freezes for movement (already in `DESIGN.md`) should look frozen.
+- Seasonal sun: the sun from the lighting work slides slowly with the time of year, higher with short shadows in summer and lower with long shadows in winter. A year is about 6 minutes at 1×, so the change is a smooth drift by day of year, never a jump at the season change, and kept to a small range so the view never feels like it's shifting under you. On by default with an off switch in the Look settings; if it still reads as distracting in the playtest, it goes off by default.
 - Sound effects and music.
-- **Playtest:** does each site feel alive?
+- **Playtest:** does each site feel alive? Is the seasonal sun noticeable without being distracting?
 
 ## Stretch
 - Legend mode: event set plus goblins, trolls, bog wights.
