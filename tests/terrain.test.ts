@@ -110,9 +110,9 @@ describe('the Kestrel Ford test site', () => {
     expect(Math.max(...map.heights)).toBeLessThanOrEqual(MAX_HEIGHT);
   });
 
-  it('uses every terrain type', () => {
+  it('uses every terrain type (but dry moats, which only come from digging)', () => {
     const used = new Set(map.types);
-    for (const id of Object.keys(TERRAIN) as TerrainId[]) expect(used, id).toContain(id);
+    for (const id of Object.keys(TERRAIN) as TerrainId[]) if (id !== 'ditch') expect(used, id).toContain(id);
   });
 
   it('has both slopes and cliffs', () => {

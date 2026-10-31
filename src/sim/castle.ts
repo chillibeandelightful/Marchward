@@ -14,7 +14,7 @@ import {
   type Thickness,
   type TowerShape,
 } from '../data/castle';
-import { COMBAT, EXTRAS, type ExtraId } from '../data/combat';
+import { COMBAT, EXTRAS, SIEGE, type ExtraId } from '../data/combat';
 import { MAX_HEIGHT } from '../data/terrain';
 import { canStep, heightAt, inBounds, NEIGHBOURS, stepBetween, terrainAt, type TerrainMap } from './terrain';
 
@@ -42,10 +42,21 @@ export interface CastlePlan {
   pieces: Piece[];
   /** Planned height change per tile (row-major), from earthworks. */
   earthworks: number[];
+  /**
+   * Tiles marked for a moat and not yet dug. Each is also lowered a level in `earthworks`; once
+   * that is done the tile becomes a dry moat, or shallow water if it meets water at its level.
+   */
+  moats: number[];
 }
 
 export function createPlan(map: TerrainMap): CastlePlan {
-  return { nextId: 1, pieces: [], earthworks: new Array<number>(map.width * map.height).fill(0) };
+  return { nextId: 1, pieces: [], earthworks: new Array<number>(map.width * map.height).fill(0), moats: [] };
+}
+
+/** Is this tile a moat (dug, dry or wet) or water that does a moat's job? */
+export function isMoatLike(map: TerrainMap, x: number, y: number): boolean {
+  const t = terrainAt(map, x, y);
+  return t.water || t.id === 'ditch';
 }
 
 /** Walls, towers and the gatehouse make up the curtain; the keep stands apart. */
@@ -62,11 +73,17 @@ export function footprint(p: PieceSpec): [number, number][] {
 
 /** The land as it will be once the planned earthworks are done. */
 export function plannedMap(map: TerrainMap, plan: CastlePlan): TerrainMap {
+  const moats = plan.moats ?? [];
+  let types = map.types;
+  if (moats.length > 0) {
+    types = [...map.types];
+    for (const i of moats) types[i] = 'ditch';
+  }
   return {
     width: map.width,
     height: map.height,
     heights: map.heights.map((h, i) => clampHeight(h + (plan.earthworks[i] ?? 0))),
-    types: map.types,
+    types,
   };
 }
 
@@ -226,6 +243,7 @@ export function earthworkProblem(base: TerrainMap, plan: CastlePlan, x: number, 
   if (!inBounds(base, x, y)) return 'Off the edge of the map';
   const t = terrainAt(base, x, y);
   const current = plan.earthworks[y * base.width + x] ?? 0;
+  if ((plan.moats ?? []).includes(y * base.width + x)) return 'A moat is planned here (click it with the Moat tool to take it off)';
   const next = current + delta;
   if (!t.canRaise && !t.canLower) return `${t.name} can't be raised or lowered`;
   if (next < 0 && !t.canLower) return `${t.name} can't be dug`;
@@ -287,7 +305,75 @@ export function clearEarthwork(base: TerrainMap, plan: CastlePlan, x: number, y:
   const i = y * base.width + x;
   if ((plan.earthworks[i] ?? 0) === 0) return false;
   plan.earthworks[i] = 0;
+  plan.moats = (plan.moats ?? []).filter((t) => t !== i);
   return true;
+}
+
+/** Why a moat can't be dug on this tile, or null if it can. */
+export function moatProblem(base: TerrainMap, plan: CastlePlan, x: number, y: number): string | null {
+  if (!inBounds(base, x, y)) return 'Off the edge of the map';
+  const i = y * base.width + x;
+  const t = terrainAt(base, x, y);
+  if ((plan.moats ?? []).includes(i)) return 'A moat is already planned here';
+  if (t.id === 'ditch') return 'Already a moat';
+  if (t.water) return 'Already water: it does a moat\'s job as it is';
+  if (t.id === 'rock') return 'Rocky ground: a moat cannot be dug';
+  if (!t.canLower) return `${t.name} can't be dug`;
+  if (plan.pieces.some((p) => footprint(p).some(([px, py]) => px === x && py === y))) return 'Something is built here';
+  if (plan.pieces.some((p) => p.kind === 'gatehouse' && gateEnds(p).some(([gx, gy]) => gx === x && gy === y)))
+    return 'That would cut the way to the gate (a drawbridge comes later)';
+  const h = heightAt(base, x, y) + Math.min(0, plan.earthworks[i] ?? 0) - 1;
+  if (h < 0) return 'Already as low as the land can go';
+  return null;
+}
+
+/** Mark a tile for a moat: lowered a level (on top of any digging already planned), then lined. */
+export function markMoat(base: TerrainMap, plan: CastlePlan, x: number, y: number): string | null {
+  const problem = moatProblem(base, plan, x, y);
+  if (problem) return problem;
+  const i = y * base.width + x;
+  plan.earthworks[i] = Math.min(0, plan.earthworks[i] ?? 0) - 1;
+  plan.moats = [...(plan.moats ?? []), i];
+  return null;
+}
+
+/** Take a planned (not yet dug) moat off a tile. Returns whether there was one. */
+export function unmarkMoat(base: TerrainMap, plan: CastlePlan, x: number, y: number): boolean {
+  if (!inBounds(base, x, y)) return false;
+  const i = y * base.width + x;
+  if (!(plan.moats ?? []).includes(i)) return false;
+  plan.moats = (plan.moats ?? []).filter((t) => t !== i);
+  plan.earthworks[i] = Math.min(0, (plan.earthworks[i] ?? 0) + 1);
+  return true;
+}
+
+/**
+ * A moat tile has just been dug: it fills with water if it meets water at or above its own level
+ * (and so does any dry moat joined to it at or below that level), otherwise it stays a dry ditch.
+ * Changes the land's terrain types in place; returns the tiles that changed.
+ */
+export function finishMoat(map: TerrainMap, i: number): number[] {
+  const x = i % map.width;
+  const y = (i - x) / map.width;
+  const h = heightAt(map, x, y);
+  const wet = NEIGHBOURS.some(([dx, dy]) => inBounds(map, x + dx, y + dy) && terrainAt(map, x + dx, y + dy).water && heightAt(map, x + dx, y + dy) >= h);
+  map.types[i] = wet ? 'shallow' : 'ditch';
+  const changed = [i];
+  if (!wet) return changed;
+  // Water runs on along any dry moat it now meets, as long as that lies no higher.
+  for (let q = 0; q < changed.length; q++) {
+    const c = changed[q] as number;
+    const cx = c % map.width;
+    const cy = (c - cx) / map.width;
+    for (const [dx, dy] of NEIGHBOURS) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (!inBounds(map, nx, ny) || terrainAt(map, nx, ny).id !== 'ditch' || heightAt(map, nx, ny) > heightAt(map, cx, cy)) continue;
+      map.types[ny * map.width + nx] = 'shallow';
+      changed.push(ny * map.width + nx);
+    }
+  }
+  return changed;
 }
 
 export interface EarthworksSummary {
@@ -306,12 +392,21 @@ export function earthworksSummary(plan: CastlePlan): EarthworksSummary {
     if (d > 0) raised += d;
     else lowered -= d;
   }
+  // Each moat's last level down is dug and lined, which takes longer.
+  const moatExtra = (plan.moats ?? []).length * EARTHWORKS.lowerLabour * (SIEGE.moatLabour - 1);
   return {
     raised,
     lowered,
     spoil: (lowered - raised) * EARTHWORKS.spoilPerLevel,
-    labour: lowered * EARTHWORKS.lowerLabour + raised * EARTHWORKS.raiseLabour,
+    labour: lowered * EARTHWORKS.lowerLabour + raised * EARTHWORKS.raiseLabour + moatExtra,
   };
+}
+
+/** Labour for one level of earthworks on a tile: lowering, raising, or the last level of a moat. */
+export function earthworkLabour(plan: CastlePlan, i: number, dir: 1 | -1): number {
+  if (dir > 0) return EARTHWORKS.raiseLabour;
+  const last = (plan.earthworks[i] ?? 0) === -1 && (plan.moats ?? []).includes(i);
+  return EARTHWORKS.lowerLabour * (last ? SIEGE.moatLabour : 1);
 }
 
 export function zeroCost(): Cost {
@@ -379,6 +474,20 @@ export function pieceHp(p: PieceSpec): number {
       return GATEHOUSE.hp;
     case 'keep':
       return KEEP.hp;
+  }
+}
+
+/** Sapper-seconds of digging to bring a piece down; Infinity for the keep, which isn't undermined. */
+export function sapSeconds(p: PieceSpec): number {
+  switch (p.kind) {
+    case 'wall':
+      return SIEGE.sap.seconds * SIEGE.sap.thickness[p.thickness] * SIEGE.sap.kind.wall;
+    case 'tower':
+      return SIEGE.sap.seconds * SIEGE.sap.thickness.thick * SIEGE.sap.kind.tower * TOWER_SHAPE[p.shape].sapTimeMult;
+    case 'gatehouse':
+      return SIEGE.sap.seconds * SIEGE.sap.thickness.thick * SIEGE.sap.kind.gatehouse;
+    case 'keep':
+      return Infinity;
   }
 }
 
@@ -452,6 +561,8 @@ export function pieceStats(view: PlanView, p: PieceSpec): PieceStats {
   const own = new Set(tiles.map(([x, y]) => y * map.width + x));
   const outside: number[] = [];
   const open: number[] = [];
+  // Outside ground at its foot that isn't moat or water: where ladders and sappers can work from.
+  const footing: number[] = [];
   for (const [x, y] of tiles)
     for (const [dx, dy] of NEIGHBOURS) {
       const nx = x + dx;
@@ -460,10 +571,14 @@ export function pieceStats(view: PlanView, p: PieceSpec): PieceStats {
       if (!inBounds(map, nx, ny) || own.has(i) || pieceAt(view, nx, ny)) continue;
       if (terrainAt(map, nx, ny).moveCost === null) continue;
       (view.outside[i] ? outside : open).push(heightAt(map, nx, ny));
+      if (view.outside[i] && !isMoatLike(map, nx, ny)) footing.push(heightAt(map, nx, ny));
     }
   const approach = outside.length > 0 ? outside : open;
   const aboveApproach = approach.length > 0 ? Math.max(0, ground + levels - Math.max(...approach)) : null;
   const above = aboveApproach ?? levels;
+  const moated = outside.length > 0 && footing.length === 0;
+  const ladderFrom = outside.length > 0 ? footing : open;
+  const ladderable = isCurtain(p.kind) && ladderFrom.length > 0 && ground + levels - Math.max(...ladderFrom) <= LADDER_REACH;
 
   const notes: string[] = [];
   const hp = pieceHp(p);
@@ -473,7 +588,7 @@ export function pieceStats(view: PlanView, p: PieceSpec): PieceStats {
     case 'tower': {
       const shape = TOWER_SHAPE[p.shape];
       if (shape.batterTaken < 1) notes.push(`Takes ${Math.round((1 - shape.batterTaken) * 100)}% less battering damage`);
-      if (shape.sapTimeMult > 1) notes.push(`Sappers need ${shape.sapTimeMult}× as long to undermine it`);
+      if (shape.sapTimeMult > 1) notes.push(`Round: sappers need ${shape.sapTimeMult}× as long to undermine it`);
       break;
     }
     case 'gatehouse':
@@ -485,7 +600,11 @@ export function pieceStats(view: PlanView, p: PieceSpec): PieceStats {
       break;
   }
   for (const e of Object.keys(EXTRAS) as ExtraId[]) if (p[e]) notes.push(`${EXTRAS[e].name}: ${EXTRAS[e].note.charAt(0).toLowerCase()}${EXTRAS[e].note.slice(1)}`);
-  if (tiles.some(([x, y]) => inBounds(map, x, y) && !terrainAt(map, x, y).canLower)) notes.push('On rock: cannot be undermined');
+  const onRock = tiles.some(([x, y]) => inBounds(map, x, y) && terrainAt(map, x, y).id === 'rock');
+  if (onRock) notes.push('On rock: cannot be undermined');
+  if (moated && isCurtain(p.kind)) notes.push('Moat all along its foot: sappers and ladder crews can\'t reach it');
+  else if (isCurtain(p.kind) && !onRock)
+    notes.push(`Sappers need ${Math.round(sapSeconds(p))} sapper-seconds to bring it down`);
   if (outside.length === 0 && open.length > 0 && isCurtain(p.kind)) notes.push('Measured from inside: no outside ground next to it');
 
   return {
@@ -494,7 +613,7 @@ export function pieceStats(view: PlanView, p: PieceSpec): PieceStats {
     levels,
     ground,
     aboveApproach,
-    ladderable: above <= LADDER_REACH,
+    ladderable,
     rangeBonus: rangeBonus(above),
     range: COMBAT.bowRange + rangeBonus(above),
     notes,

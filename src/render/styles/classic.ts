@@ -27,6 +27,7 @@ export const CLASSIC: VisualStyle = {
       ford: 0x5a6c7a,
       deep: 0x33475a,
       road: 0x5e5a30,
+      ditch: 0x4a3f2a,
     },
     face: { bank: 0x55432c, cliff: 0x5e5a51, edge: 0x352a1d },
     strata: 0x37342e,
