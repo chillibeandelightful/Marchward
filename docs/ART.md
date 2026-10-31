@@ -75,6 +75,18 @@ Castle stone is not cut into a sprite for every wall shape. Instead, every face 
 
 Each frame gives its rectangle on the sheet (`x`, `y`, `w`, `h`) and its anchor pixel inside the frame (`ax`, `ay`). Textures need a file each, so they can repeat. A bad entry is skipped with a warning in the browser console, and that sprite falls back to the code drawing.
 
+## The art master
+
+To paint the whole set in one place (or hand it to another artist or an image tool) and keep it in one style, pack every file into one image:
+
+- `npm run art:pack` writes `art-master/` (not committed):
+  - `marchward-art-master.png`: every file in `public/art/` as a box, scaled up 4 times (`--scale n` to change), with transparent pixels filled **magenta**. Titles, sprite names (with their frame counts) and the painting notes are written in the dark space around the boxes. **This is the one to paint on.**
+  - `marchward-art-legend.png`: the same with every frame outlined and each sprite's ground pixel marked in red on the frame's bottom and left edges. Reference only.
+  - `marchward-art-layout.json`: where each box sits. The layout is also saved inside the master PNG, and if an editor strips it, it is worked out again from the manifest.
+- `npm run art:unpack -- path/to/edited-master.png` splits a painted master back into `public/art/`, writing only the files whose pixels changed (`--dry-run` to see which first). It reads only inside the boxes, so notes or marks in the margins do no harm.
+
+What a painted master must keep: the boxes where they are and the same size; the whole image the same shape (it may be scaled evenly, say 2× or ½×, and each art pixel takes the colour that fills most of its square, so slight blur or noise is fine); magenta (or real transparency) for clear pixels; PNG format. Textures can't have holes: a clear pixel in a texture box keeps its old colour, with a warning. The manifest isn't touched, so new sprites, extra frames or resized sheets still need the manifest (and this spec) updating by hand, then `art:pack` again.
+
 ## Templates
 
 `npm run art:templates` writes guides to paint over into `art-templates/`:

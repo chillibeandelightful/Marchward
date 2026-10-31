@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "art:draw": "node tools/art/draw.mjs",
-    "art:templates": "node tools/art/templates.mjs"
+    "art:templates": "node tools/art/templates.mjs",
+    "art:pack": "node tools/art/pack.mjs",
+    "art:unpack": "node tools/art/unpack.mjs"
   },
   "dependencies": {
     "@fontsource/pixelify-sans": "5.2.7",
