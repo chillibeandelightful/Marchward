@@ -1,5 +1,5 @@
 /** Terrain types and their rules. Numbers are starting values to tune in playtesting. */
-export type TerrainId = 'grass' | 'forest' | 'marsh' | 'rock' | 'shallow' | 'ford' | 'deep' | 'road';
+export type TerrainId = 'grass' | 'forest' | 'marsh' | 'rock' | 'shallow' | 'ford' | 'deep' | 'road' | 'ditch';
 
 export interface TerrainType {
   id: TerrainId;
@@ -88,6 +88,20 @@ export const TERRAIN: Record<TerrainId, TerrainType> = {
     building: 'Not possible',
     water: true,
     ...WET,
+  },
+  /** A dry moat, dug with the Moat tool. A moat next to water fills and becomes shallow water instead. */
+  ditch: {
+    id: 'ditch',
+    name: 'Dry moat',
+    moveCost: 2,
+    movement: 'Slow: down into the ditch and out',
+    building: 'Not possible',
+    water: false,
+    buildable: false,
+    groundwork: NONE,
+    canRaise: false,
+    canLower: false,
+    foundation: 'A moat: nothing can be built in it',
   },
   road: {
     id: 'road',

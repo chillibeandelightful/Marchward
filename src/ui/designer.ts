@@ -13,6 +13,7 @@ import {
   clearEarthwork,
   fitExtras,
   isCurtain,
+  markMoat,
   pieceAt,
   pieceCost,
   pieceStats,
@@ -20,6 +21,7 @@ import {
   removePieceAt,
   shapeEarth,
   toggleExtra,
+  unmarkMoat,
   type Axis,
   type CastlePlan,
   type Piece,
@@ -28,7 +30,7 @@ import {
   type PlanReport,
   type PlanView,
 } from '../sim/castle';
-import { EXTRAS, TROOPS, UNITS, type ExtraId, type TroopType } from '../data/combat';
+import { EXTRAS, SIEGE, TROOPS, UNITS, type ExtraId, type TroopType } from '../data/combat';
 import { redeploy } from '../sim/battle';
 import { addPost, postProblem, postsAt, removePost } from '../sim/defence';
 import { walkLine } from '../sim/site';
@@ -37,7 +39,7 @@ import { reopenPiece } from '../sim/works';
 import { inBounds, type TerrainMap } from '../sim/terrain';
 import { formatCost, renderLines, statLines, type Line } from './format';
 
-export type ToolId = 'look' | 'wall' | 'tower' | 'gatehouse' | 'keep' | 'raise' | 'lower' | 'remove' | 'extras' | 'troops';
+export type ToolId = 'look' | 'wall' | 'tower' | 'gatehouse' | 'keep' | 'raise' | 'lower' | 'moat' | 'remove' | 'extras' | 'troops';
 
 const TOOLS: readonly { id: ToolId; name: string; key: string; help: string }[] = [
   { id: 'look', name: 'Look', key: '1', help: 'Point at land or pieces to see their numbers. Drag to move the view.' },
@@ -56,6 +58,12 @@ const TOOLS: readonly { id: ToolId; name: string; key: string; help: string }[] 
     name: 'Lower',
     key: '7',
     help: 'Click or drag to dig tiles down one level; the ground around slopes down with them. Hold Shift for a sheer cut, like a ditch. Makes spoil.',
+  },
+  {
+    id: 'moat',
+    name: 'Moat',
+    key: 'm',
+    help: 'Click or drag to dig a moat a level down; click a planned moat again to take it off. Next to water at its level it fills; otherwise it is a dry ditch. Sappers and ladder crews can\'t work from a moat. Not in rock.',
   },
   { id: 'remove', name: 'Remove', key: '8', help: 'Click or drag to remove pieces and earthwork marks.' },
   {
@@ -197,6 +205,7 @@ export class Designer {
         break;
       case 'raise':
       case 'lower':
+      case 'moat':
       case 'remove':
         this.painting = true;
         this.painted.clear();
@@ -316,6 +325,22 @@ export class Designer {
       else if (clearEarthwork(base, plan, tile.x, tile.y)) this.changed([tile]);
       return;
     }
+    if (this.tool === 'moat') {
+      // Dragging only adds; clicking a single planned tile takes it off again.
+      if (this.painted.size === 1 && unmarkMoat(base, plan, tile.x, tile.y)) {
+        this.notice = { text: 'Moat taken off', bad: false };
+        this.changed([tile]);
+        return;
+      }
+      const problem = markMoat(base, plan, tile.x, tile.y);
+      if (problem) {
+        if (this.painted.size === 1) this.notice = { text: problem, bad: true };
+        return;
+      }
+      this.notice = null;
+      this.changed([tile]);
+      return;
+    }
     const result = shapeEarth(base, plan, tile.x, tile.y, this.tool === 'raise' ? 1 : -1, !this.sheer);
     if (result.problem) this.notice = { text: result.problem, bad: true };
     else this.changed(result.changed.map(([x, y]) => ({ x, y })));
@@ -398,6 +423,7 @@ export class Designer {
       this.clearArmed = false;
       this.host.plan.pieces = [];
       this.host.plan.earthworks.fill(0);
+      this.host.plan.moats = [];
       this.changed('all');
     });
     plan.append(clear);
@@ -408,6 +434,15 @@ export class Designer {
     const view = this.host.view();
     const tool = TOOLS.find((t) => t.id === this.tool);
     const lines: Line[] = [{ text: tool?.name ?? '', cls: 'head' }, { text: tool?.help ?? '', cls: 'dim' }];
+    if (this.tool === 'moat') {
+      const labour = EARTHWORKS.lowerLabour * SIEGE.moatLabour;
+      lines.push(
+        { text: `Each tile: ${labour} worker-days of digging and lining (diggers and labourers), and ${EARTHWORKS.spoilPerLevel} cartloads of spoil out.` },
+        { text: 'Moat at the foot of a wall: no sapping and no ladders there. Raiders can still wade or scramble across, slowly, and batter the wall.', cls: 'dim' },
+        { text: `Planned moat tiles: ${(this.host.plan.moats ?? []).length}`, cls: 'dim' },
+      );
+      return lines;
+    }
     if (this.tool === 'extras') {
       for (const id of Object.keys(EXTRAS) as ExtraId[])
         lines.push({ text: EXTRAS[id].name, cls: 'head' }, { text: EXTRAS[id].note }, { text: `Cost per piece: ${formatCost(EXTRAS[id].cost)}`, cls: 'dim' });

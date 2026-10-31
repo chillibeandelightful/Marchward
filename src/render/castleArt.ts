@@ -27,6 +27,7 @@ const BAD_TINT = 0xd8452f;
 const GOOD_TINT = 0x8fe08a;
 const RAISE_COLOUR = 0xf2c14e;
 const LOWER_COLOUR = 0x5fb4ea;
+const MOAT_COLOUR = 0x3fc1b0;
 
 export function tinted(p: Palette, colour: number, amount: number): Palette {
   return { top: mix(p.top, colour, amount), face: mix(p.face, colour, amount), dark: p.dark };
@@ -207,9 +208,19 @@ export class CastleArt implements RowExtras {
       const d = plan.earthworks[y * map.width + x] ?? 0;
       const s = this.shapeAt(x, y);
       if (d === 0 || !s || occupant[y * map.width + x]) continue;
-      const colour = d > 0 ? RAISE_COLOUR : LOWER_COLOUR;
+      const moat = (plan.moats ?? []).includes(y * map.width + x);
+      const colour = moat ? MOAT_COLOUR : d > 0 ? RAISE_COLOUR : LOWER_COLOUR;
       g.poly(s.top.flatMap((p) => [p.x, p.y])).fill({ color: colour, alpha: 0.28 }).stroke({ width: 1.5, color: colour, alpha: 0.9 });
       const c = isoToScreen(x, y, (s.corners.n + s.corners.e + s.corners.s + s.corners.w) / 4);
+      if (moat) {
+        // A planned moat: two little waves.
+        for (const dy of [-2.5, 2.5])
+          g.moveTo(c.sx - 7, c.sy + dy)
+            .quadraticCurveTo(c.sx - 3.5, c.sy + dy - 3, c.sx, c.sy + dy)
+            .quadraticCurveTo(c.sx + 3.5, c.sy + dy + 3, c.sx + 7, c.sy + dy)
+            .stroke({ width: 1.8, color: 0x1b1f24, alpha: 0.85, cap: 'round' });
+        continue;
+      }
       const n = Math.min(3, Math.abs(d));
       for (let i = 0; i < n; i++) {
         const cy = c.sy + (i - (n - 1) / 2) * 5;

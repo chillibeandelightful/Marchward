@@ -4,7 +4,7 @@ import { dateOf, formatDate, isWinter } from './calendar';
 import { createPlan, type CastlePlan } from './castle';
 import { collectHarvest, collectTaxes, createEconomy, efficiency, hire, mouths, newMonth, payAndFeed, totalWorkers, type EconomyState } from './economy';
 import { Rng } from './rng';
-import { endBattle, startBattle, stepBattle } from './battle';
+import { chooseApproach, endBattle, startBattle, stepBattle } from './battle';
 import { addReport, createDefence, describeStrength, raidStrength, scheduleRaid, type DefenceState } from './defence';
 import { RAIDS } from '../data/combat';
 import { buildSite, type Point, type SiteDef } from './site';
@@ -183,6 +183,8 @@ function raidCheck(state: SimState, rng: Rng, day: number, events: TickEvents): 
   if (!d.warned && day >= d.nextRaid - RAIDS.warningDays && day < d.nextRaid) {
     d.warned = true;
     events.raidWarning = true;
+    // The raiders' scouts have looked the castle over too: they come where it looks weakest.
+    d.from = chooseApproach(state, rng);
     addLog(
       state,
       `Scouts report raiders gathering to the ${d.from}: ${describeStrength(raidStrength(d.raidCount + 1))}, expected about ${formatDate(d.nextRaid)}. Post your soldiers with the Troops tool (0).`,

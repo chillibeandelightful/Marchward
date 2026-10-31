@@ -176,3 +176,17 @@ After each milestone, add a section:
 - **The questions:** do the walls look clean now? Do you prefer the land with or without height lines? Do the banks and cliffs look intentional, or would you rather the river banks sloped gently down to the water?
 **Known issues:** the river banks are still upright steps (dressed with reeds) rather than gentle slopes. The map's outer rim is still plain.
 
+## M6 part 1 – Sorties, sight lines, sappers, ladders and moats (2026-10-31)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- Build or load a castle with a gatehouse, and give it some **Low** walls on one side and **Medium** or **High** walls elsewhere. In the Defence tab hire a few extra swordsmen.
+- **Moats:** press **M** (or the Moat button) and drag along the outside of a wall. The tiles turn teal with little waves; the plan panel's earthworks line includes them. Point at the wall: its stats now say a moat runs along its foot (no ladders or sapping). Hire diggers and labourers and run the clock: each tile becomes a dry ditch, or fills with water if it meets the river at its level. Try a tile on rock, under a wall or in front of the gate: it tells you why not. Click a planned tile again with M to take it off.
+- **A siege raid:** in Game → Raids press **Bring the next raid now** twice or more (sappers and ladder crews come from the second raid on). Watch for:
+  - **ladder crews** carrying ladders, raising them against your Low walls, raiders climbing up and fighting your archers on top, and ladders pushed away where you had two or more archers posted;
+  - **sappers** digging at the foot of a wall under a little timber shelter, with a crack creeping up the wall until it falls (not on rock, and not from a moat);
+  - **swordsmen going out** through the gatehouse (the gate shows open as they pass) after raider archers, sappers and ladder crews, and coming back in when the odds turn;
+  - **walls blocking arrows**: raider archers at the foot of a wall can't hit soldiers standing just behind it; archers on towers shoot over lower walls; some arrows go up in a high arc over a wall.
+- **The report** has a new *Sappers, ladders and sorties* section, and any piece brought down by sappers is listed as *Undermined* with what would have stopped it.
+- **Where raids come from:** across a few raids, the scouts should name different sides, mostly the one where your castle is weakest (low walls, an open side, no moat).
+- **The questions:** do Low walls, moats, rock and round towers now feel like real trade-offs? Do sorties help or throw your swordsmen away? Are sappers and ladders too strong or too weak?
+**Known issues:** this is part 1 of M6: the drawbridge, wider and extra gatehouses, sieges with food on both sides and Commander mode come in part 2. The Moat tool won't dig across the front of the gate yet (that needs the drawbridge, in part 2). Raiders still march in from the map edge each time rather than camping round the castle. Sorties can cost swordsmen; the odds rule is a first guess.

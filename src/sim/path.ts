@@ -134,14 +134,17 @@ export function findPath(
 
 /**
  * Cost of the cheapest way from every tile to the nearest of `targets` (Dijkstra, run backwards
- * from the targets). Infinity where there's no way. Units follow it downhill, one tile at a time.
+ * from the targets), plus that target's `start` cost if given. Infinity where there's no way. Units follow it downhill, one tile at a time.
  */
-export function distanceField(map: TerrainMap, targets: readonly number[], cost: StepCost): Float64Array {
+export function distanceField(map: TerrainMap, targets: readonly number[], cost: StepCost, start?: (t: number) => number): Float64Array {
   const dist = new Float64Array(map.width * map.height).fill(Infinity);
   const open = new Heap();
+  // Each target can start with a cost of its own, so nearer-but-worse targets can lose to better ones.
   for (const t of targets) {
-    dist[t] = 0;
-    open.push(t, 0);
+    const d = start ? start(t) : 0;
+    if (d >= (dist[t] as number)) continue;
+    dist[t] = d;
+    open.push(t, d);
   }
   const done = new Uint8Array(dist.length);
   while (open.size > 0) {

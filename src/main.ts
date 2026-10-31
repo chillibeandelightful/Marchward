@@ -508,7 +508,7 @@ async function start(): Promise<void> {
     input.update(ticker.deltaMS);
 
     // Switch between the land now and as planned.
-    const wantPlanned = forcePlanned || designer.tool === 'raise' || designer.tool === 'lower';
+    const wantPlanned = forcePlanned || designer.tool === 'raise' || designer.tool === 'lower' || designer.tool === 'moat';
     if (wantPlanned !== showPlanned) {
       showPlanned = wantPlanned;
       refresh('all');
@@ -576,7 +576,7 @@ async function start(): Promise<void> {
       const groundTile = wp && p && !backdrop.covers(p.y) ? pickTile(shapes, wp.x, wp.y) : null;
       // Pointing at a wall or tower means that piece's tile, not the ground behind it.
       const piece =
-        wp && groundTile && designer.tool !== 'raise' && designer.tool !== 'lower'
+        wp && groundTile && designer.tool !== 'raise' && designer.tool !== 'lower' && designer.tool !== 'moat'
           ? pickPiece(shownView(), wp.x, wp.y, groundTile.x + groundTile.y)
           : null;
       next = piece ? (shapeAt[piece.y * sim.map.width + piece.x] ?? groundTile) : groundTile;
