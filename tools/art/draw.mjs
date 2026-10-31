@@ -2,7 +2,7 @@
 // Run with `npm run art:draw`. The PNG files it writes are the art: anyone can paint over them
 // (or replace them with their own, to docs/ART.md) and the game uses whatever is there. Running
 // this again overwrites them, so keep hand edits out of here or stop running it.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { encodePng, get, image, put } from './png.mjs';
 import { int, outline, rng, shift } from './kit.mjs';
@@ -307,6 +307,16 @@ function sheet(groups) {
 const range = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 
 mkdirSync(OUT, { recursive: true });
+
+// Files that now hold art from elsewhere (cut down from painted sheets, Oct 2026): this script leaves
+// them, and their manifest entries, alone. Take a file off this list to draw it here again.
+const KEEP = new Set(['plants.png', 'stone-face.png', ...['grass', 'forest', 'marsh', 'rock', 'ford', 'deep'].map((l) => `ground-${l}.png`)]);
+const write = (file, img) => {
+  if (KEEP.has(file)) console.log(`Kept ${file} (not drawn by this script)`);
+  else writeFileSync(join(OUT, file), encodePng(img));
+};
+const previous = existsSync(join(OUT, 'manifest.json')) ? JSON.parse(readFileSync(join(OUT, 'manifest.json'), 'utf8')) : null;
+
 const plants = sheet([
   ['pine', range(6, pine)],
   ['oak', range(4, oak)],
@@ -315,13 +325,13 @@ const plants = sheet([
   ['reeds', range(3, reeds)],
   ['tuft', range(4, tuft)],
 ]);
-writeFileSync(join(OUT, 'plants.png'), encodePng(plants.img));
+write('plants.png', plants.img);
 
 // People: one row per kind and pose, the frames of each animation in order.
 const people = sheet(
   Object.keys(PEOPLE).flatMap((kind) => Object.entries(posesFor(kind)).map(([pose, n]) => [`${kind}.${pose}`, range(n, (f) => person(kind, pose, f))])),
 );
-writeFileSync(join(OUT, 'people.png'), encodePng(people.img));
+write('people.png', people.img);
 
 const camp = sheet([
   ['tent', range(3, tent)],
@@ -332,15 +342,15 @@ const camp = sheet([
   ['fire', range(4, fire)],
   ['puff', range(3, puff)],
 ]);
-writeFileSync(join(OUT, 'camp.png'), encodePng(camp.img));
+write('camp.png', camp.img);
 
-writeFileSync(join(OUT, 'stone-face.png'), encodePng(stoneFace()));
-writeFileSync(join(OUT, 'stone-top.png'), encodePng(stoneTop()));
+write('stone-face.png', stoneFace());
+write('stone-top.png', stoneTop());
 const lands = ['grass', 'forest', 'marsh', 'rock', 'shallow', 'ford', 'deep'];
-for (const land of lands) writeFileSync(join(OUT, `ground-${land}.png`), encodePng(ground[land]()));
+for (const land of lands) write(`ground-${land}.png`, ground[land]());
 const manifest = {
   version: 1,
-  sheets: { 'plants.png': plants.sprites, 'people.png': people.sprites, 'camp.png': camp.sprites },
+  sheets: { 'plants.png': KEEP.has('plants.png') && previous ? previous.sheets['plants.png'] : plants.sprites, 'people.png': people.sprites, 'camp.png': camp.sprites },
   textures: {
     stoneFace: 'stone-face.png',
     stoneTop: 'stone-top.png',
