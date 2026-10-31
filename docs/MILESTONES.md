@@ -144,6 +144,23 @@ Options:
 Agreed (playtester, 2026-10-27): **B with towers ahead of walls at each step**, plus the "build this next" click. It fixes the corners, makes the castle rise in a believable order whether it is laid out all at once or piece by piece, and fits wall collapse above, since connected building leaves few free ends. If it turns out too clever in play, A on its own is the fallback.
 - Suggested slot: a small follow-up any time; it touches only the job order in `works.ts` and its tests.
 
+### Building in stages, heavier scaffolding, workers up on the work
+Playtest note (2026-10-31). Three linked changes to how a piece goes up; none is built yet.
+
+**1. Build stages in a logical order.** Today there are none: each wall, tower, gatehouse and keep job needs worker-days of digging, masonry, carpentry and hauling (the mix in `JOB_MIX`, `src/data/economy.ts`), and `workDay` in `src/sim/works.ts` puts every trade on it at once from the first day. Masons can be laying stone while the diggers are still on the footings, and the piece's drawn height (`pieceProgress`) is just the total share of work done, whichever trade did it. Planned order:
+- **Footings:** digging, with hauling to carry the spoil away. Nothing else starts until the footings are dug. The piece shows as a dug trench, not stone.
+- **Stonework:** masonry and hauling together, with carpenters putting up and raising the scaffolding alongside. The piece's height follows masonry done, not total work.
+- **Fit-out** (towers, gatehouse and keep only): carpentry for floors, roof, gate and portcullis once the stone is topped out. Walls finish with their battlements at the end of stonework.
+- Workers whose stage hasn't come yet go to the next job that can use them (the usual queue), so nobody stands idle waiting for the diggers. The job's status line says what it's waiting on ("Waiting for footings").
+- Stage shares stay data-driven in `src/data/economy.ts`. Saves keep working: a saved job's per-trade progress maps onto the stages (any masonry done before its footings finish simply counts once the footings do). Needs a save version bump.
+- Tests: masonry does no work on a job whose footings aren't dug; the height follows masonry; fit-out waits for topping out; a free mason moves to another job instead of idling.
+
+**2. Heavier scaffolding.** Today's scaffolding (`drawScaffold` in `src/render/castleArt.ts`) is a few thin poles and ledgers along the two front faces. It should read as a real timber frame: thicker poles, ledgers at each level, plank decks with ladders between them, diagonal braces, and a rough top rail just above the rising stone. Either drawn heavier in code for every style, or as a painted overlay piece in the art sheets (poles, decks, ladder) tiled up the face for Painted, with the code drawing as the fallback. The scaffold rises with the stonework and comes down when the piece is finished.
+
+**3. Workers up on the scaffolding.** Today every worker stands round the foot of the job (`src/render/workersArt.ts`), waving at a wall that grows by itself. Instead, by stage: diggers in the trench at the foot during footings; masons on the top deck of the scaffolding, near the top of the rising stone, laying blocks; carpenters on the decks and ladders; labourers carrying up the ladders and at the foot, with carters still bringing loads to the base. Figures are placed at the deck's height, so they rise with the work. Render-only: the sim already knows who is on which job.
+
+- Suggested slot: 1 is a small sim follow-up any time (touches `works.ts`, its tests and the status text) and can go with *Smarter build order* above, since both change how jobs are worked. 2 and 3 go together as a render follow-up after 1, because where workers stand depends on the stage.
+
 ### Gate sorties and archer sight lines (priority)
 Playtest bug (2026-10-28): once the walls are closed, your swordsmen stand inside being shot by raider archers who shoot straight through the walls, and never go out to meet them. Swordsmen can already walk through the gatehouse; the trouble is that they only chase raiders within a few tiles of their post (`guardRadius` in `src/data/combat.ts`), so archers further off are ignored, and bows on both sides ignore walls entirely, so anyone in range can be hit. The gate is also never drawn opening.
 - **Sorties:** swordsmen go out through the gate after raiders outside, especially raider archers shooting into the castle, and come back in when the raiders are beaten or they're badly outnumbered. The gate is drawn opening as they pass and shutting behind them, as `DESIGN.md` already promises. Raiders can't slip in while it stands open for a moment; if that proves too generous, an open gate can count as a weak point later.
