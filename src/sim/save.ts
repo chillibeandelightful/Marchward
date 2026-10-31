@@ -7,7 +7,7 @@ import type { SimState } from './state';
 import { createWorks } from './works';
 
 /** Bump when the shape of SimState changes, and add a step to MIGRATIONS that upgrades the old shape. */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface SaveFile {
   version: number;
@@ -42,6 +42,11 @@ const MIGRATIONS: Record<number, (state: Record<string, unknown>) => Record<stri
       economy: { ...economy, troops: economy.troops ?? startingTroops(), troopsWanted: economy.troopsWanted ?? startingTroops() },
       defence: s.defence ?? defence,
     };
+  },
+  // Version 3 (M6): planned moats. Battles saved mid-fight carry on; their new fields have defaults.
+  2: (s) => {
+    const plan = s.plan as Record<string, unknown>;
+    return { ...s, plan: { ...plan, moats: plan.moats ?? [] } };
   },
 };
 

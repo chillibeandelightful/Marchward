@@ -10,7 +10,7 @@ import {
   type WorkerType,
 } from '../data/economy';
 import { addWorkingDays } from './calendar';
-import { footprint, pieceCost, pieceName, planReport, viewPlan, type CastlePlan, type Piece } from './castle';
+import { earthworkLabour, finishMoat, footprint, pieceCost, pieceName, planReport, viewPlan, type CastlePlan, type Piece } from './castle';
 import { efficiency, type EconomyState } from './economy';
 import type { TerrainMap } from './terrain';
 
@@ -96,13 +96,14 @@ export function listJobs(map: TerrainMap, plan: CastlePlan, works: WorksState): 
   plan.earthworks.forEach((d, i) => {
     if (d === 0) return;
     const dir = d > 0 ? 1 : -1;
-    const labour = dir > 0 ? EARTHWORKS.raiseLabour : EARTHWORKS.lowerLabour;
+    const labour = earthworkLabour(plan, i, dir);
     const rec = works.earth[i];
     const standing = pieceOn.get(i);
     const started = standing && (works.pieces[standing.id]?.complete || sumWork(works.pieces[standing.id]?.done ?? zeroWork()) > 0);
+    const moat = (plan.moats ?? []).includes(i);
     jobs.push({
       key: `e${i}`,
-      name: `${dir > 0 ? 'Raise' : 'Lower'} ground at ${i % map.width}, ${Math.floor(i / map.width)}`,
+      name: `${moat ? 'Dig moat' : dir > 0 ? 'Raise ground' : 'Lower ground'} at ${i % map.width}, ${Math.floor(i / map.width)}`,
       piece: null,
       tile: i,
       need: split(labour, JOB_MIX[dir > 0 ? 'raise' : 'lower']),
@@ -245,9 +246,14 @@ export function workDay(map: TerrainMap, plan: CastlePlan, econ: EconomyState, w
       map.heights[job.tile] = (map.heights[job.tile] ?? 0) + dir;
       plan.earthworks[job.tile] = (plan.earthworks[job.tile] ?? 0) - dir;
       if (dir < 0) stores.spoil += EARTHWORKS.spoilPerLevel;
+      // The last level of a moat dug: it becomes a ditch, or fills with water.
+      if ((plan.earthworks[job.tile] ?? 0) === 0 && (plan.moats ?? []).includes(job.tile)) {
+        plan.moats = (plan.moats ?? []).filter((t) => t !== job.tile);
+        for (const t of finishMoat(map, job.tile)) if (!result.land.includes(t)) result.land.push(t);
+      }
       works.earthDone += totalNeed;
       delete works.earth[job.tile];
-      result.land.push(job.tile);
+      if (!result.land.includes(job.tile)) result.land.push(job.tile);
     } else {
       const dir = (plan.earthworks[job.tile] ?? 0) > 0 ? 1 : -1;
       works.earth[job.tile] = { done, dir, spoilTaken: dir > 0 };

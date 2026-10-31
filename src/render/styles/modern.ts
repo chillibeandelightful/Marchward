@@ -15,6 +15,7 @@ export const MODERN: VisualStyle = {
       ford: 0x6aa9c8,
       deep: 0x2c5d8f,
       road: 0x6c9c45,
+      ditch: 0x6e5b3a,
     },
     face: { bank: 0x7b5d3c, cliff: 0x77705f, edge: 0x4d3b28 },
     strata: 0x4f4a40,

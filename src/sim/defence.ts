@@ -23,8 +23,10 @@ export interface DefenceState {
   raids: boolean;
   /** Day the next raid arrives. */
   nextRaid: number;
-  /** Which edge it comes from. Scouts report it with the warning. */
+  /** Which edge it comes from. Chosen again when the scouts report it, from where the castle looks weakest. */
   from: Edge;
+  /** The edge the last raid came from (missing before M6), so the next one tends to come from elsewhere. */
+  lastFrom?: Edge | null;
   /** Raids fought so far. */
   raidCount: number;
   warned: boolean;
@@ -71,12 +73,16 @@ export function addReport(d: DefenceState, report: BattleReport): void {
 export function raidStrength(raidNumber: number): Record<RaiderType, number> {
   const n = Math.max(1, raidNumber);
   return Object.fromEntries(
-    RAIDER_TYPES.map((t) => [t, RAIDS.strength[t].base + RAIDS.strength[t].perRaid * (n - 1)]),
+    RAIDER_TYPES.map((t) => {
+      const { base, perRaid, from } = RAIDS.strength[t];
+      return [t, n < from ? 0 : Math.floor(base + perRaid * (n - from))];
+    }),
   ) as Record<RaiderType, number>;
 }
 
 export function describeStrength(s: Record<RaiderType, number>): string {
-  return RAIDER_TYPES.map((t) => `${s[t]} ${(s[t] === 1 ? UNITS[t].name : UNITS[t].plural).toLowerCase()}`).join(' and ');
+  const parts = RAIDER_TYPES.filter((t) => s[t] > 0).map((t) => `${s[t]} ${(s[t] === 1 ? UNITS[t].name : UNITS[t].plural).toLowerCase()}`);
+  return parts.length <= 1 ? (parts[0] ?? 'nobody') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
 function pieceOn(plan: CastlePlan, x: number, y: number): Piece | null {

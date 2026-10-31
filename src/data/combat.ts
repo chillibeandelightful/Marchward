@@ -4,8 +4,8 @@ import type { Cost } from './castle';
 export type TroopType = 'swordsman' | 'archer';
 export const TROOP_TYPES: readonly TroopType[] = ['swordsman', 'archer'];
 
-export type RaiderType = 'raider' | 'raiderArcher';
-export const RAIDER_TYPES: readonly RaiderType[] = ['raider', 'raiderArcher'];
+export type RaiderType = 'raider' | 'raiderArcher' | 'sapper' | 'ladderCrew';
+export const RAIDER_TYPES: readonly RaiderType[] = ['raider', 'raiderArcher', 'sapper', 'ladderCrew'];
 
 export type UnitType = TroopType | RaiderType;
 export type Side = 'defender' | 'attacker';
@@ -65,6 +65,26 @@ export const UNITS: Record<UnitType, UnitKind> = {
     melee: { damage: 3, cooldown: 1.2 },
     bow: { damage: 10, cooldown: 2.4, hit: 0.6 },
     batter: 0,
+  },
+  sapper: {
+    name: 'Sapper',
+    plural: 'Sappers',
+    side: 'attacker',
+    hp: 40,
+    speed: 0.36,
+    melee: { damage: 4, cooldown: 1.2 },
+    bow: null,
+    batter: 0.5,
+  },
+  ladderCrew: {
+    name: 'Ladder crew',
+    plural: 'Ladder crews',
+    side: 'attacker',
+    hp: 45,
+    speed: 0.34,
+    melee: { damage: 6, cooldown: 1 },
+    bow: null,
+    batter: 0.5,
   },
 };
 
@@ -154,9 +174,67 @@ export const RAIDS = {
   warningDays: 10,
   /** Days between raids. Raids never come in winter. */
   gap: [100, 150] as const,
-  /** Raid n (from 1) brings base + perRaid × (n − 1) of each. */
+  /**
+   * Raid n (from 1) brings base + perRaid × (n − from) of each, rounded down, from raid `from` on.
+   * Sappers and ladder crews only come once the raiders know there is a castle worth the trouble.
+   */
   strength: {
-    raider: { base: 4, perRaid: 3 },
-    raiderArcher: { base: 1, perRaid: 1 },
-  } satisfies Record<RaiderType, { base: number; perRaid: number }>,
+    raider: { base: 4, perRaid: 3, from: 1 },
+    raiderArcher: { base: 1, perRaid: 1, from: 1 },
+    sapper: { base: 1, perRaid: 0.5, from: 2 },
+    ladderCrew: { base: 2, perRaid: 0.5, from: 2 },
+  } satisfies Record<RaiderType, { base: number; perRaid: number; from: number }>,
+  /**
+   * Choosing where to come from: each edge is weighed by how cheap its best way in is (see
+   * `chooseApproach`); an edge `costSpread` dearer than the best is half as likely. The edge used
+   * last time counts as `repeatPenalty` dearer, so raids come from different sides.
+   */
+  costSpread: 6,
+  repeatPenalty: 8,
+};
+
+/** Sappers, ladders, moats, sight lines and sorties (M6). Starting values to tune in playtesting. */
+export const SIEGE = {
+  sap: {
+    /** Sapper-seconds to undermine a thin wall; thicker walls and other pieces take longer (× below). */
+    seconds: 45,
+    thickness: { thin: 1, standard: 1.4, thick: 1.9 } as Record<'thin' | 'standard' | 'thick', number>,
+    /** Towers also take their shape's `sapTimeMult`. */
+    kind: { wall: 1, tower: 1.6, gatehouse: 2 } as Record<'wall' | 'tower' | 'gatehouse', number>,
+    /** Sappers that can dig under one piece at once. */
+    perPiece: 2,
+    /** Share of hits turned aside for a sapper at work under his timber shelter. */
+    cover: 0.5,
+  },
+  ladder: {
+    /** Seconds to raise a ladder against a piece. */
+    raise: 6,
+    /** Climbing up and over costs as much as walking this many tiles. */
+    climb: 3,
+    /** Defender-seconds on the piece to push a raised ladder away, while no raider is up on it. */
+    push: 8,
+  },
+  /** Moats: digging one tile costs this many times an ordinary lowering. */
+  moatLabour: 1.5,
+  /**
+   * Sight lines: a shot over a piece in the way needs the shooter to stand at least as high as its
+   * top, or to lob it high, which only works with both shooter and target this far from the piece,
+   * and hits this much less often.
+   */
+  lobClear: 1.6,
+  lobHit: 0.5,
+  sortie: {
+    /** Swordsmen go out after raiders up to this far (in tiles of walking) from where they stand. */
+    reach: 22,
+    /** At most this share of the swordsmen go out at once; the rest hold the keep. */
+    share: 0.5,
+    /** They don't go, or come back, when raiders near the target outnumber them this many to one. */
+    odds: 1,
+    /** Seconds back inside before going out again. */
+    rest: 4,
+    /** Raiders within this many tiles of the target count for the odds. */
+    around: 3,
+    /** Seconds the gate stays drawn open after someone passes. */
+    gateOpen: 1.5,
+  },
 };

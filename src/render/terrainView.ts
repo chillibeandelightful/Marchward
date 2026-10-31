@@ -279,6 +279,26 @@ export class TerrainView {
       case 'ford':
         this.drawRoad(g, s);
         break;
+      case 'ditch': {
+        // A dry moat: a darker, muddy bottom inside the cut, with a sharpened stake or two.
+        const inner = [
+          this.point(s, -0.3, -0.3),
+          this.point(s, 0.3, -0.3),
+          this.point(s, 0.3, 0.3),
+          this.point(s, -0.3, 0.3),
+        ];
+        g.poly(inner.flatMap((p) => [p.x, p.y])).fill({ color: shade(pal.ground.ditch, 0.72), alpha: 0.8 });
+        if (hash2(s.x, s.y, 25) < 0.6) {
+          const p = this.point(s, (hash2(s.x, s.y, 26) - 0.5) * 0.4, (hash2(s.x, s.y, 27) - 0.5) * 0.4);
+          g.ellipse(p.x, p.y, 6, 2.5).fill({ color: pal.puddle, alpha: 0.7 });
+        }
+        for (let i = 0; i < 2; i++) {
+          if (hash2(s.x, s.y, 28 + i) < 0.5) continue;
+          const p = this.point(s, (hash2(s.x, s.y, 32 + i) - 0.5) * 0.7, (hash2(s.x, s.y, 34 + i) - 0.5) * 0.7);
+          g.moveTo(p.x, p.y).lineTo(p.x + 1.5, p.y - 7).stroke({ width: 1.6, color: 0x4a3420, cap: 'round' });
+        }
+        break;
+      }
       case 'shallow':
       case 'deep': {
         const n = terrain.id === 'shallow' ? 2 : 1;

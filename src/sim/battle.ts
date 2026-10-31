@@ -1,8 +1,8 @@
-import { WALL_THICKNESS } from '../data/castle';
-import { COMBAT, RAIDER_TYPES, TROOP_TYPES, UNITS, type RaiderType, type Side, type TroopType, type UnitType } from '../data/combat';
+import { LADDER_REACH, WALL_THICKNESS } from '../data/castle';
+import { COMBAT, RAIDER_TYPES, RAIDS, SIEGE, TROOP_TYPES, UNITS, type RaiderType, type Side, type TroopType, type UnitType } from '../data/combat';
 import { simConfig } from '../data/config';
 import { TRADES } from '../data/economy';
-import { batterTaken, footprint, gateEnds, hasSlits, pieceCost, pieceHp, pieceLevels, pieceName, rangeBonus, type Piece, type PieceKind } from './castle';
+import { batterTaken, footprint, gateEnds, hasSlits, isMoatLike, pieceCost, pieceHp, pieceLevels, pieceName, rangeBonus, sapSeconds, type Piece, type PieceKind } from './castle';
 import { EDGES, describeStrength, raidStrength, type Edge } from './defence';
 import { distanceField, downhill, findPath, landCost, type StepCost } from './path';
 import { Rng } from './rng';
@@ -35,9 +35,17 @@ export interface Unit {
   ox: number;
   oy: number;
   /** What it did this tick, for drawing. */
-  act: 'stand' | 'walk' | 'fight' | 'batter' | 'shoot' | 'loot';
+  act: 'stand' | 'walk' | 'fight' | 'batter' | 'shoot' | 'loot' | 'sap' | 'raise';
   /** Piece it was posted on at the start (0 for the ground), for the report. */
   postedOn: number;
+  /** Ladder crews: still carrying their ladder (missing in saves from before M6). */
+  ladder?: boolean;
+  /** Sappers digging, or a ladder crew raising its ladder: seconds at it so far (0 when not). */
+  work?: number;
+  /** Swordsmen: the raider they have gone out after (0 or missing for none). */
+  sortie?: number;
+  /** Swordsmen: ticks before they'll go out again after coming back in. */
+  rest?: number;
 }
 
 /** A castle piece as it stands in battle. */
@@ -71,6 +79,24 @@ export interface PieceCombat {
   coveredBy: number;
   /** Seconds into the battle the raiders first struck it (missing in saves from before it was kept). */
   batterFrom?: number | null;
+  /** Sapper-seconds of digging under it so far, and needed to bring it down (null: can't be undermined). */
+  sap?: number;
+  sapNeed?: number | null;
+  /** Seconds into the battle the sappers started on it. */
+  sapFrom?: number | null;
+  /** How it fell: battered down, or undermined. */
+  cause?: 'batter' | 'sap';
+  /** Gatehouse: drawn open until this tick, as soldiers go through. */
+  openUntil?: number;
+}
+
+/** A ladder raised against a piece, from the tile at its foot. Kept after it is pushed away, for drawing. */
+export interface Ladder {
+  piece: number;
+  tile: number;
+  /** Defender-seconds spent pushing it. */
+  push: number;
+  up: boolean;
 }
 
 /** An arrow in flight. Whether it hits is decided as it is loosed; the damage lands when it arrives. */
@@ -90,6 +116,8 @@ export interface Arrow {
   arrive: number;
   damage: number;
   hit: boolean;
+  /** Lobbed high over a wall in the way. */
+  lob?: boolean;
 }
 
 export interface Splash {
@@ -115,6 +143,24 @@ export interface BattleStats {
   /** Raiders who got away. */
   escaped: number;
   plundered: { crowns: number; food: number } | null;
+  /** Ladders, sorties and shots over walls (missing in saves from before M6). */
+  siege?: SiegeStats;
+}
+
+export interface SiegeStats {
+  /** Spots at the start where sappers could dig and ladders could go up (missing in older saves). */
+  sapSpots?: number;
+  ladderSpots?: number;
+  laddersUp: number;
+  laddersPushed: number;
+  /** Raiders who climbed onto your walls by ladder. */
+  climbed: number;
+  /** Times your swordsmen went out after raiders. */
+  sorties: number;
+  /** Arrows lobbed over a wall in the way. */
+  lobbed: number;
+  /** Sappers killed while digging, and raiders killed up on your walls. */
+  sappersKilled: number;
 }
 
 /** A raid being fought. Plain data, so a battle can be saved and carried on. */
@@ -145,6 +191,8 @@ export interface BattleState {
   front: number;
   rallyVersion: number;
   stats: BattleStats;
+  /** Ladders raised (missing in saves from before M6). */
+  ladders?: Ladder[];
 }
 
 export type Outcome = 'repelled' | 'plundered' | 'held';
@@ -177,19 +225,79 @@ interface Derived {
   version: number;
   /** Piece id per tile; 0 for none. */
   occupant: Int32Array;
-  /** Route-finding costs for raiders, which count battering through a piece as so much walking. */
+  /** Pieces with a ladder up against them: raiders can climb over them, both ways. */
+  laddered: Set<number>;
+  /** Route-finding costs for raiders, which count battering, undermining or laddering a piece as so much walking. */
   attackCost: StepCost;
-  /** Where raiders can actually walk now: not into standing pieces. */
+  /** Where raiders can actually walk now: not into standing pieces, except over a ladder. */
   attackWalk: StepCost;
   defendCost: StepCost;
   attack: Float64Array;
   flee: Float64Array;
+  /** 1 on tiles raiders can walk to from the map edge without breaking in. */
+  outside: Uint8Array;
   /** Towards the front of the rally piece, for the tile it was worked out for. */
   rallyField: Float64Array | null;
   rallyFront: number;
+  /** Towards the best spots for sappers to dig and ladder crews to raise ladders, and the spots themselves (tile -> piece id). */
+  sapField: Float64Array;
+  sapSpots: Map<number, number>;
+  ladderField: Float64Array;
+  ladderSpots: Map<number, number>;
 }
 
 const derived = new WeakMap<BattleState, Derived>();
+
+/** Who the raiders still have, which decides which ways in they think are cheap. */
+function strengthLeft(b: BattleState): { batterers: number; sappers: number; ladders: number } {
+  let batterers = 0;
+  let sappers = 0;
+  let ladders = 0;
+  // Before they arrive, go by what the scouts say is coming.
+  if (!b.units.some((u) => u.side === 'attacker')) {
+    const st = raidStrength(b.raid);
+    for (const t of RAIDER_TYPES) if (UNITS[t].batter > 0) batterers += st[t];
+    return { batterers, sappers: st.sapper, ladders: st.ladderCrew };
+  }
+  for (const u of b.units) {
+    if (u.side !== 'attacker' || u.hp <= 0) continue;
+    if (u.type === 'sapper') sappers++;
+    else if (u.type === 'ladderCrew' && u.ladder !== false) ladders++;
+    if (UNITS[u.type].batter > 0) batterers++;
+  }
+  return { batterers, sappers, ladders };
+}
+
+/**
+ * What it costs raiders, in tiles of walking, to get through a standing piece from the tile in
+ * front of it: the cheapest of battering it down, undermining it and laddering it, for the
+ * raiders they have.
+ */
+function breakInCost(map: TerrainMap, p: PieceCombat, from: number, have: { batterers: number; sappers: number; ladders: number }, laddered: boolean): number | null {
+  if (p.kind === 'keep') return null;
+  const climb = SIEGE.ladder.climb;
+  if (laddered) return climb;
+  const fx = from % map.width;
+  const fy = (from - fx) / map.width;
+  const moat = isMoatLike(map, fx, fy);
+  let best = Infinity;
+  if (have.batterers > 0) best = (COMBAT.batterCostPerHp * p.hp) / p.batterTaken;
+  // Walking a tile takes about 2.5 seconds, so seconds of work count as that many tiles.
+  const secondsPerTile = 1 / UNITS.raider.speed;
+  const need = p.sapNeed ?? null;
+  if (have.sappers > 0 && need !== null && !moat)
+    best = Math.min(best, (need - (p.sap ?? 0)) / Math.min(have.sappers, SIEGE.sap.perPiece) / secondsPerTile);
+  if (have.ladders > 0 && !moat && canLadder(map, p, from)) best = Math.min(best, climb + SIEGE.ladder.raise / secondsPerTile);
+  return Number.isFinite(best) ? best : null;
+}
+
+/** Can a ladder from this tile reach the top of the piece? Not from a moat or water. */
+function canLadder(map: TerrainMap, p: PieceCombat, from: number): boolean {
+  const fx = from % map.width;
+  const fy = (from - fx) / map.width;
+  if (p.kind === 'keep' || isMoatLike(map, fx, fy) || terrainAt(map, fx, fy).moveCost === null) return false;
+  return p.ground + p.levels - heightAt(map, fx, fy) <= LADDER_REACH;
+}
 
 function derive(map: TerrainMap, b: BattleState): Derived {
   const old = derived.get(b);
@@ -202,16 +310,24 @@ function derive(map: TerrainMap, b: BattleState): Derived {
   }
   const occupant = old?.occupant ?? occupancy(map, b);
   const at = (i: number) => b.pieces[occupant[i] as number];
+  const laddered = new Set((b.ladders ?? []).filter((l) => l.up && b.pieces[l.piece]?.standing).map((l) => l.piece));
+  const have = strengthLeft(b);
   const attackCost: StepCost = (i, j) => {
     const land = landCost(map, i, j);
     if (land === null) return null;
     const p = at(j);
     if (!p) return land;
     if (!p.standing) return land * COMBAT.rubbleCost;
-    if (p.kind === 'keep') return null;
-    return land + (COMBAT.batterCostPerHp * p.hp) / p.batterTaken;
+    const from = at(i);
+    if (from?.standing) return null; // no walking along the wall tops
+    const extra = breakInCost(map, p, i, have, laddered.has(p.id));
+    return extra === null ? null : land + extra;
   };
-  const attackWalk: StepCost = (i, j) => (at(j)?.standing ? null : attackCost(i, j));
+  const attackWalk: StepCost = (i, j) => {
+    const p = at(j);
+    if (p?.standing && !laddered.has(p.id)) return null;
+    return attackCost(i, j);
+  };
   const defendCost: StepCost = (i, j) => {
     const land = landCost(map, i, j);
     if (land === null) return null;
@@ -220,19 +336,85 @@ function derive(map: TerrainMap, b: BattleState): Derived {
     if (!p.standing) return land * COMBAT.rubbleCost;
     return p.kind === 'gatehouse' ? land : null;
   };
+  // Outside: where the raiders can walk from where they are (or their edge, before they arrive)
+  // without breaking in or climbing.
+  const walkOnly: StepCost = (i, j) => (at(j)?.standing ? null : attackCost(i, j));
+  const raiderTiles = b.units.filter((u) => u.side === 'attacker' && u.hp > 0 && !u.on).map((u) => tileOf(map, u.x, u.y));
+  const fromEdge = distanceField(map, raiderTiles.length > 0 ? raiderTiles : edgeTiles(map, b.from), walkOnly);
+  const outside = new Uint8Array(fromEdge.length);
+  for (let i = 0; i < fromEdge.length; i++) if (Number.isFinite(fromEdge[i] as number)) outside[i] = 1;
+  const attack = distanceField(map, b.targetTiles, attackCost);
+
+  // Spots at the foot of a piece, outside and not in a moat, from which it leads somewhere (inside).
+  const sapSpots = new Map<number, number>();
+  const ladderSpots = new Map<number, number>();
+  const ladderAt = new Set((b.ladders ?? []).filter((l) => l.up).map((l) => l.tile));
+  for (const p of Object.values(b.pieces)) {
+    if (!p.standing || p.kind === 'keep') continue;
+    const inside = p.tiles.some((t) => edgeTiles4(map, t).some((n) => !at(n)?.standing && !outside[n] && terrainAt(map, n % map.width, Math.floor(n / map.width)).moveCost !== null));
+    if (!inside) continue;
+    for (const t of p.tiles)
+      for (const n of edgeTiles4(map, t)) {
+        if (at(n)?.standing || !outside[n]) continue;
+        const nx = n % map.width;
+        const ny = (n - nx) / map.width;
+        if (isMoatLike(map, nx, ny) || terrainAt(map, nx, ny).moveCost === null) continue;
+        if (p.sapNeed !== null && p.sapNeed !== undefined) sapSpots.set(n, p.id);
+        if (canLadder(map, p, n) && !ladderAt.has(n) && !laddered.has(p.id)) ladderSpots.set(n, p.id);
+      }
+  }
+  // Prefer the piece the raiders mean to break in at (the one on the cheapest way in), then the weakest.
+  const strike = (() => {
+    let i = -1;
+    for (const u of b.units) {
+      if (u.side !== 'attacker' || u.hp <= 0) continue;
+      const t = tileOf(map, u.x, u.y);
+      if (i < 0 || (attack[t] as number) < (attack[i] as number)) i = t;
+    }
+    if (i < 0) return 0;
+    for (let n = 0; n < map.width * map.height; n++) {
+      const next = downhill(map, attack, i, attackCost);
+      if (next === null) return 0;
+      const p = at(next);
+      if (p?.standing && !laddered.has(p.id)) return p.id;
+      i = next;
+    }
+    return 0;
+  })();
+  const sapStart = (t: number) => {
+    const p = b.pieces[sapSpots.get(t) as number] as PieceCombat;
+    return (p.id === strike ? 0 : 6) + ((p.sapNeed ?? 0) - (p.sap ?? 0)) * UNITS.sapper.speed * 0.25;
+  };
+  const ladderStart = (t: number) => ((ladderSpots.get(t) as number) === strike ? 0 : 6);
+
   const d: Derived = {
     version: b.version,
     occupant,
+    laddered,
     attackCost,
     attackWalk,
     defendCost,
-    attack: distanceField(map, b.targetTiles, attackCost),
+    attack,
     flee: distanceField(map, edgeTiles(map), attackCost),
+    outside,
     rallyField: b.front >= 0 ? distanceField(map, [b.front], attackWalk) : null,
     rallyFront: b.front,
+    sapSpots,
+    sapField: distanceField(map, [...sapSpots.keys()], attackWalk, sapStart),
+    ladderSpots,
+    ladderField: distanceField(map, [...ladderSpots.keys()], attackWalk, ladderStart),
   };
   derived.set(b, d);
   return d;
+}
+
+/** The edge neighbours of a tile that are on the map. */
+function edgeTiles4(map: TerrainMap, i: number): number[] {
+  const x = i % map.width;
+  const y = (i - x) / map.width;
+  const out: number[] = [];
+  for (const [dx, dy] of NEIGHBOURS) if (inBounds(map, x + dx, y + dy)) out.push((y + dy) * map.width + x + dx);
+  return out;
 }
 
 function occupancy(map: TerrainMap, b: BattleState): Int32Array {
@@ -261,7 +443,7 @@ function edgeTiles(map: TerrainMap, edge?: Edge): number[] {
 // Starting a battle.
 
 function zeroUnits(): Record<UnitType, number> {
-  return { swordsman: 0, archer: 0, raider: 0, raiderArcher: 0 };
+  return { swordsman: 0, archer: 0, raider: 0, raiderArcher: 0, sapper: 0, ladderCrew: 0 };
 }
 
 /** The pieces as they stand today: unfinished ones have part of their strength and height. */
@@ -297,6 +479,10 @@ function combatPieces(s: SimState): Record<string, PieceCombat> {
       breachedAt: null,
       batterFrom: null,
       coveredBy: 0,
+      sap: 0,
+      // Rock can't be dug under; a half-built piece comes down in proportion.
+      sapNeed: p.kind === 'keep' || footprint(p).some(([x, y]) => terrainAt(s.map, x, y).id === 'rock') ? null : sapSeconds(p) * Math.min(1, progress),
+      sapFrom: null,
     };
   }
   return out;
@@ -351,17 +537,14 @@ function newUnit(b: BattleState, rng: Rng, type: UnitType, x: number, y: number,
   return u;
 }
 
-/** Start the raid that is due: the raiders arrive at one edge and the garrison takes its posts. */
-export function startBattle(s: SimState, rng: Rng): BattleState {
-  const { map } = s;
-  const d = s.defence;
-  d.raidCount++;
+/** A battle with nobody on the field yet. */
+function blankBattle(s: SimState, raid: number, from: Edge): BattleState {
   const pieces = combatPieces(s);
   const { target, tiles } = chooseTarget(s, pieces);
-  const b: BattleState = {
+  return {
     tick: 0,
-    raid: d.raidCount,
-    from: d.from,
+    raid,
+    from,
     target,
     targetTiles: tiles,
     units: [],
@@ -388,11 +571,46 @@ export function startBattle(s: SimState, rng: Rng): BattleState {
       manned: [],
       escaped: 0,
       plundered: null,
+      siege: { laddersUp: 0, laddersPushed: 0, climbed: 0, sorties: 0, lobbed: 0, sappersKilled: 0 },
     },
+    ladders: [],
   };
+}
+
+/**
+ * Where the next raid will come from: the raiders weigh each map edge by its cheapest way in to
+ * what they're after (battering, undermining or laddering, with the men they're bringing), and
+ * mostly pick a cheap one, but not always the cheapest, and seldom the side they came from last.
+ */
+export function chooseApproach(s: SimState, rng: Rng): Edge {
+  const d = s.defence;
+  const b = blankBattle(s, d.raidCount + 1, d.from);
+  const der = derive(s.map, b);
+  const costs = EDGES.map((e) => {
+    let best = Infinity;
+    for (const i of edgeTiles(s.map, e)) best = Math.min(best, der.attack[i] as number);
+    return best + (e === d.lastFrom ? RAIDS.repeatPenalty : 0);
+  });
+  const cheapest = Math.min(...costs);
+  if (!Number.isFinite(cheapest)) return d.from;
+  const weights = costs.map((c) => (Number.isFinite(c) ? Math.pow(0.5, (c - cheapest) / RAIDS.costSpread) : 0));
+  let r = rng.next() * weights.reduce((a, w) => a + w, 0);
+  for (let k = 0; k < EDGES.length; k++) {
+    r -= weights[k] as number;
+    if (r < 0) return EDGES[k] as Edge;
+  }
+  return EDGES[costs.indexOf(cheapest)] as Edge;
+}
+
+/** Start the raid that is due: the raiders arrive at one edge and the garrison takes its posts. */
+export function startBattle(s: SimState, rng: Rng): BattleState {
+  const { map } = s;
+  const d = s.defence;
+  d.raidCount++;
+  const b = blankBattle(s, d.raidCount, d.from);
   const der = derive(map, b);
 
-  // The raiders gather at their edge: the reachable tiles nearest a spot picked at random.
+  // The raiders gather at their edge, round a spot picked from the cheapest third of the ways in.
   const order = [d.from, ...EDGES.filter((e) => e !== d.from)];
   let spawn: number[] = [];
   for (const e of order) {
@@ -403,7 +621,9 @@ export function startBattle(s: SimState, rng: Rng): BattleState {
     }
   }
   if (spawn.length === 0) spawn = edgeTiles(map, d.from);
-  const centre = spawn.length > 0 ? rng.pick(spawn) : 0;
+  const cheap = [...spawn].sort((a, c) => (der.attack[a] as number) - (der.attack[c] as number) || a - c);
+  const centre = cheap.length > 0 ? rng.pick(cheap.slice(0, Math.max(1, Math.ceil(cheap.length / 3)))) : 0;
+  d.lastFrom = b.from;
   const cx = centre % map.width;
   const cy = (centre - cx) / map.width;
   const near = [...spawn].sort((a, c) => tileDist(map, a, cx, cy) - tileDist(map, c, cx, cy) || a - c).slice(0, 8);
@@ -412,7 +632,8 @@ export function startBattle(s: SimState, rng: Rng): BattleState {
   for (const t of RAIDER_TYPES)
     for (let i = 0; i < strength[t]; i++, k++) {
       const tile = near[k % Math.max(1, near.length)] ?? centre;
-      newUnit(b, rng, t, tile % map.width, Math.floor(tile / map.width));
+      const u = newUnit(b, rng, t, tile % map.width, Math.floor(tile / map.width));
+      if (t === 'ladderCrew') u.ladder = true;
       b.stats.start[t]++;
     }
   if (!near.some((i) => Number.isFinite(der.attack[i]))) {
@@ -422,6 +643,9 @@ export function startBattle(s: SimState, rng: Rng): BattleState {
 
   placeDefenders(s, b, rng, der, cx, cy);
   b.stats.manned = [...new Set(b.units.filter((u) => u.on).map((u) => u.on))];
+  const sg = b.stats.siege as SiegeStats;
+  sg.sapSpots = der.sapSpots.size;
+  sg.ladderSpots = der.ladderSpots.size;
   s.works.crew = {};
   s.works.idle = { ...s.economy.workers };
   return b;
@@ -541,7 +765,7 @@ function strikePoint(map: TerrainMap, b: BattleState, der: Derived, from: number
     const next = downhill(map, der.attack, i, der.attackCost);
     if (next === null) return null;
     const p = b.pieces[der.occupant[next] as number];
-    if (p?.standing) return { piece: p.id, front: i };
+    if (p?.standing && !der.laddered.has(p.id)) return { piece: p.id, front: i };
     i = next;
   }
   return null;
@@ -598,6 +822,8 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
   const { map } = s;
   b.tick++;
   const result: TickResult = { ended: false, pieces: false };
+  const siege = (b.stats.siege ??= { laddersUp: 0, laddersPushed: 0, climbed: 0, sorties: 0, lobbed: 0, sappersKilled: 0 });
+  const ladders = (b.ladders ??= []);
   let der = derive(map, b);
   const seconds = b.tick * DT;
   if (b.rallyVersion !== b.version) {
@@ -629,7 +855,7 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     if (!p.standing || p.oilLeft <= 0) continue;
     p.oilWait = Math.max(0, p.oilWait - DT);
     if (p.oilWait > 0 || !defenders.some((u) => u.on === p.id)) continue;
-    const below = attackers.filter((u) => u.hp > 0 && Math.hypot(u.x - p.x, u.y - p.y) <= COMBAT.cauldron.radius);
+    const below = attackers.filter((u) => u.hp > 0 && !u.on && Math.hypot(u.x - p.x, u.y - p.y) <= COMBAT.cauldron.radius);
     if (below.length === 0) continue;
     p.oilLeft--;
     p.oilWait = COMBAT.cauldron.cooldown;
@@ -642,7 +868,51 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     }
   }
 
+  // Ladders: soldiers on the piece push a ladder away, unless raiders are already up on it.
+  for (const l of ladders) {
+    if (!l.up) continue;
+    const p = b.pieces[l.piece];
+    if (!p?.standing) {
+      l.up = false;
+      continue;
+    }
+    if (attackers.some((u) => u.on === p.id)) continue;
+    const pushers = defenders.filter((u) => u.on === p.id).length;
+    if (pushers === 0) continue;
+    l.push += pushers * DT;
+    if (l.push >= SIEGE.ladder.push) {
+      l.up = false;
+      siege.laddersPushed++;
+      b.version++;
+      der = derive(map, b);
+    }
+  }
+
   const pieceAt = (i: number) => b.pieces[der.occupant[i] as number];
+
+  /**
+   * Can a unit shoot at another? Clear, or only by lobbing over a piece in the way (less accurate),
+   * or not at all. A piece blocks unless the shooter stands at least as high as its top; a lob only
+   * clears it with both shooter and target well away from it.
+   */
+  const sight = (u: Unit, foe: Unit): 'clear' | 'lob' | 'blocked' => {
+    const from = tileOf(map, u.x, u.y);
+    const to = tileOf(map, foe.x, foe.y);
+    const level = unitLevel(map, b as BattleState, u);
+    let out: 'clear' | 'lob' | 'blocked' = 'clear';
+    walkLine([from % map.width, Math.floor(from / map.width)], [to % map.width, Math.floor(to / map.width)], (x, y) => {
+      if (out === 'blocked') return;
+      const i = y * map.width + x;
+      if (i === from || i === to) return;
+      const p = pieceAt(i);
+      if (!p?.standing || p.id === u.on || p.id === foe.on) return;
+      if (level >= p.ground + p.levels) return;
+      if (Math.hypot(u.x - x, u.y - y) >= SIEGE.lobClear && Math.hypot(foe.x - x, foe.y - y) >= SIEGE.lobClear) out = 'lob';
+      else out = 'blocked';
+    });
+    return out;
+  };
+  const canShoot = (u: Unit, f: Unit, d: number) => d <= reach(map, b as BattleState, u, f) && sight(u, f) !== 'blocked';
 
   const move = (u: Unit, tx: number, ty: number, cost: StepCost): void => {
     const from = tileOf(map, u.x, u.y);
@@ -661,14 +931,22 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     u.x = nx;
     u.y = ny;
     u.act = 'walk';
+    u.work = 0;
+    const p = pieceAt(to);
+    // Through the gatehouse: the gate is drawn open behind them for a moment.
+    if (u.side === 'defender' && p?.standing && p.kind === 'gatehouse') p.openUntil = b.tick + Math.round(SIEGE.sortie.gateOpen * simConfig.ticksPerSecond);
     if (u.side === 'attacker' && to !== from) {
-      const p = pieceAt(to);
       if (p && !p.standing && p.breachedAt === null && !b.stats.gaps.includes(to)) b.stats.gaps.push(to);
+      // Up a ladder onto the wall, or down off it.
+      const was = u.on;
+      u.on = p?.standing ? p.id : 0;
+      if (u.on && u.on !== was) siege.climbed++;
     }
   };
 
   const strike = (u: Unit, foe: Unit): void => {
     u.act = 'fight';
+    u.work = 0;
     if (u.cooldown > 0) return;
     foe.hp -= UNITS[u.type].melee.damage;
     u.cooldown = UNITS[u.type].melee.cooldown;
@@ -679,12 +957,16 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     const bow = UNITS[u.type].bow;
     if (!bow || u.cooldown > 0) return;
     u.cooldown = bow.cooldown;
-    const p = foe.on ? b.pieces[foe.on] : undefined;
+    const p = foe.on && foe.side === 'defender' ? b.pieces[foe.on] : undefined;
     const cover = p ? (p.complete ? (p.slits ? COMBAT.cover.slits : COMBAT.cover.battlements) : COMBAT.cover.unfinished) : 0;
     const trees = !foe.on && terrainAt(map, Math.round(foe.x), Math.round(foe.y)).id === 'forest' ? 1 - COMBAT.forestCover : 1;
+    // A sapper at work is under a timber shelter.
+    const shelter = foe.type === 'sapper' && (foe.work ?? 0) > 0 ? 1 - SIEGE.sap.cover : 1;
+    const lob = sight(u, foe) === 'lob';
+    if (lob) siege.lobbed++;
     // Shooting up is harder: each level the target stands above the shooter takes some off.
     const up = Math.max(0, unitLevel(map, b, foe) - unitLevel(map, b, u));
-    const chance = bow.hit * trees * Math.max(0.4, 1 - COMBAT.upwardPenalty * up);
+    const chance = bow.hit * trees * shelter * (lob ? SIEGE.lobHit : 1) * Math.max(0.4, 1 - COMBAT.upwardPenalty * up);
     const r = rng.next();
     const hit = r < chance * (1 - cover);
     if (!hit && r < chance && p) {
@@ -706,9 +988,10 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
       y1: foe.y,
       l1,
       fired: b.tick,
-      arrive: b.tick + Math.max(1, Math.round((dist / COMBAT.arrowSpeed) * simConfig.ticksPerSecond)),
+      arrive: b.tick + Math.max(1, Math.round((dist / COMBAT.arrowSpeed) * (lob ? 1.4 : 1) * simConfig.ticksPerSecond)),
       damage: bow.damage,
       hit,
+      ...(lob ? { lob: true } : {}),
     });
   };
 
@@ -726,8 +1009,38 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     return best;
   };
 
+  // Sorties: how many swordsmen may be out at once, and how many are.
+  const swords = defenders.filter((u) => u.type === 'swordsman');
+  const sortieCap = Math.ceil(swords.length * SIEGE.sortie.share);
+  let out = swords.filter((u) => u.sortie).length;
+  /** Worth going out for: raider archers, sappers and ladder crews first, then anyone at the walls. */
+  const sortieTarget = (u: Unit): Unit | null => {
+    let best: Unit | null = null;
+    let bestScore = Infinity;
+    for (const f of attackers) {
+      if (f.hp <= 0 || f.on) continue;
+      const d = Math.hypot(f.x - u.x, f.y - u.y);
+      if (d > SIEGE.sortie.reach) continue;
+      const t = tileOf(map, f.x, f.y);
+      if (!der.outside[t]) continue;
+      const score = d - (f.type === 'raiderArcher' || f.type === 'sapper' || f.type === 'ladderCrew' ? 8 : 0);
+      if (score < bestScore && oddsOk(f, Math.min(sortieCap, swords.length))) {
+        best = f;
+        bestScore = score;
+      }
+    }
+    return best;
+  };
+  /** Would this many swordsmen not be badly outnumbered by the raiders round the target? */
+  const oddsOk = (f: Unit, n: number): boolean => {
+    let foes = 0;
+    for (const a of attackers) if (a.hp > 0 && !a.on && UNITS[a.type].melee.damage >= 6 && Math.hypot(a.x - f.x, a.y - f.y) <= SIEGE.sortie.around) foes++;
+    return foes <= SIEGE.sortie.odds * Math.max(1, n);
+  };
+
   const escaped = new Set<number>();
   const batterers = new Map<number, number>();
+  const sappers = new Map<number, number>();
   for (const u of b.units) {
     if (u.hp <= 0) continue;
     u.cooldown = Math.max(0, u.cooldown - DT);
@@ -736,24 +1049,33 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     if (u.on && !b.pieces[u.on]?.standing) u.on = 0; // knocked off a fallen piece
 
     if (u.side === 'defender') {
+      // Anyone on a piece fights raiders who have climbed up onto it.
+      if (u.on) {
+        const climber = nearest(u, attackers, (f, d) => f.on === u.on && d <= COMBAT.meleeReach + 0.6);
+        if (climber) {
+          strike(u, climber);
+          continue;
+        }
+      }
       if (UNITS[u.type].bow) {
         // Shoot first at raider archers who can shoot back, then at whoever is nearest.
         const foe =
-          nearest(u, attackers, (f, d) => !!UNITS[f.type].bow && d <= reach(map, b, u, f) && d <= reach(map, b, f, u)) ??
-          nearest(u, attackers, (f, d) => d <= reach(map, b, u, f));
+          nearest(u, attackers, (f, d) => !!UNITS[f.type].bow && canShoot(u, f, d) && d <= reach(map, b, f, u)) ?? nearest(u, attackers, (f, d) => canShoot(u, f, d));
         if (foe) shoot(u, foe);
         else if (u.on) walkTheWalls(u, attackers);
         continue;
       }
-      // Swordsmen: fight anyone in reach, chase raiders near their post, otherwise go back to it.
-      const foe = nearest(u, attackers, (_, d) => d <= COMBAT.meleeReach);
+      // Swordsmen fight on the ground: anyone in reach first.
+      const foe = nearest(u, attackers, (f, d) => !f.on && d <= COMBAT.meleeReach);
       if (foe) {
         strike(u, foe);
         continue;
       }
+      if (sortie(u, here)) continue;
+      // Chase raiders near their post, otherwise go back to it.
       const px = u.post % map.width;
       const py = (u.post - px) / map.width;
-      const chase = nearest(u, attackers, (f, d) => d <= COMBAT.guardRadius + 2 && Math.hypot(f.x - px, f.y - py) <= COMBAT.guardRadius);
+      const chase = nearest(u, attackers, (f, d) => !f.on && d <= COMBAT.guardRadius + 2 && Math.hypot(f.x - px, f.y - py) <= COMBAT.guardRadius);
       if (chase) {
         const there = tileOf(map, chase.x, chase.y);
         if (there === here || clearWalk(map, here, there, der.defendCost)) {
@@ -777,7 +1099,7 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
         if (u.post >= 0 && Math.hypot(u.x - px - u.ox, u.y - py - u.oy) > 0.05) move(u, px + u.ox, py + u.oy, der.defendCost);
         continue;
       }
-      if (u.path.length === 0 || u.path[0] !== here) {
+      if (u.path.length === 0 || u.path[0] !== here || u.path[u.path.length - 1] !== u.post) {
         if (u.retry > 0) {
           u.retry--;
           continue;
@@ -805,8 +1127,17 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
       advance(u, next);
       continue;
     }
+    // Up on a wall: deal with the soldiers there before going down the other side.
+    if (u.on) {
+      const guard = nearest(u, defenders, (f) => f.on === u.on);
+      if (guard) {
+        if (Math.hypot(guard.x - u.x, guard.y - u.y) <= COMBAT.meleeReach + 0.6) strike(u, guard);
+        else move(u, guard.x, guard.y, () => 1);
+        continue;
+      }
+    }
     if (kind.bow) {
-      const target = nearest(u, defenders, (f, d) => d <= reach(map, b, u, f));
+      const target = nearest(u, defenders, (f, d) => canShoot(u, f, d));
       if (target) {
         shoot(u, target);
         continue;
@@ -817,6 +1148,8 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
       strike(u, close);
       continue;
     }
+    // Sappers and ladder crews go about their own work, unless soldiers come at them.
+    if (siegeWork(u, here)) continue;
     const near = nearest(u, defenders, (f, d) => !f.on && d <= COMBAT.raiderAggro && clearWalk(map, here, tileOf(map, f.x, f.y), der.attackWalk));
     if (near) {
       move(u, near.x, near.y, der.attackWalk);
@@ -847,6 +1180,126 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     }
     const next = downhill(map, der.attack, here, der.attackCost);
     if (next !== null) advance(u, next);
+  }
+
+  /**
+   * A swordsman goes out through the gate after a raider outside (raider archers, sappers and ladder
+   * crews first) while few enough of the others are out and the odds there aren't too long, and
+   * comes back when the raider is down or the odds turn. Returns whether he is out.
+   */
+  function sortie(u: Unit, here: number): boolean {
+    const bs = b as BattleState;
+    if (bs.phase !== 'fight') {
+      if (u.sortie) out--;
+      u.sortie = 0;
+      return false;
+    }
+    let foe = u.sortie ? bs.units.find((f) => f.id === u.sortie && f.hp > 0 && !f.on) : undefined;
+    if (foe && !oddsOk(foe, swords.filter((o) => o.sortie && Math.hypot(o.x - (foe as Unit).x, o.y - (foe as Unit).y) <= SIEGE.sortie.around + 2).length)) foe = undefined;
+    if (u.sortie && !foe) {
+      // Done, or outnumbered: back to the post, and a breather before going out again.
+      u.sortie = 0;
+      u.path = [];
+      u.rest = SIEGE.sortie.rest * simConfig.ticksPerSecond;
+      out--;
+    }
+    if (!foe) {
+      if ((u.rest ?? 0) > 0) {
+        u.rest = (u.rest ?? 0) - 1;
+        return false;
+      }
+      if (out >= sortieCap) return false;
+      const pick = sortieTarget(u);
+      if (!pick) {
+        u.rest = simConfig.ticksPerSecond;
+        return false;
+      }
+      const t = tileOf(map, pick.x, pick.y);
+      const path = findPath(map, here, (i) => i === t, [pick.x, pick.y], der.defendCost, SIEGE.sortie.reach * 1.5);
+      if (!path) {
+        u.rest = simConfig.ticksPerSecond * 2;
+        return false;
+      }
+      foe = pick;
+      u.sortie = pick.id;
+      u.path = path;
+      u.retry = 15;
+      out++;
+      // Counted as a sortie when they set out from inside the walls (not when they switch targets outside).
+      if (!der.outside[here]) siege.sorties++;
+    }
+    const there = tileOf(map, foe.x, foe.y);
+    if (there === here || (Math.hypot(foe.x - u.x, foe.y - u.y) < 3 && clearWalk(map, here, there, der.defendCost))) {
+      move(u, foe.x, foe.y, der.defendCost);
+      return true;
+    }
+    if (u.retry <= 0 || u.path[0] !== here || u.path[u.path.length - 1] !== there) {
+      u.path = findPath(map, here, (i) => i === there, [foe.x, foe.y], der.defendCost, SIEGE.sortie.reach * 1.5) ?? [];
+      u.retry = 15;
+    } else u.retry--;
+    const step = u.path[1];
+    if (step === undefined) return true;
+    move(u, (step % map.width) + u.ox, Math.floor(step / map.width) + u.oy, der.defendCost);
+    if (tileOf(map, u.x, u.y) === step) u.path.shift();
+    return true;
+  }
+
+  /**
+   * Sappers walk to the foot of the piece they mean to bring down and dig under it; ladder crews
+   * carry their ladder to the foot of a wall low enough to scale and raise it. Returns false when
+   * there's nothing for them to do (no spot they can reach), so they fight like any raider.
+   */
+  function siegeWork(u: Unit, here: number): boolean {
+    const bs = b as BattleState;
+    const isSapper = u.type === 'sapper';
+    if (!isSapper && !(u.type === 'ladderCrew' && u.ladder)) return false;
+    const spots = isSapper ? der.sapSpots : der.ladderSpots;
+    const field = isSapper ? der.sapField : der.ladderField;
+    if (!Number.isFinite(field[here] as number)) return false;
+    const pid = spots.get(here);
+    if (pid === undefined) {
+      const next = downhill(map, field, here, der.attackWalk);
+      if (next === null) return false;
+      const nx = next % map.width;
+      move(u, nx + u.ox * 0.5, (next - nx) / map.width + u.oy * 0.5, der.attackWalk);
+      return true;
+    }
+    const p = bs.pieces[pid] as PieceCombat;
+    // Go right up to the foot of it first: the side of the spot next to the piece.
+    const next = p.tiles.find((t) => edgeNeighbours(map, t, here)) ?? (p.tiles[0] as number);
+    const hx = here % map.width;
+    const hy = (here - hx) / map.width;
+    const fx = hx + ((next % map.width) - hx) * 0.22 + u.oy * 0.6 * (hy === Math.floor(next / map.width) ? 1 : 0);
+    const fy = hy + (Math.floor(next / map.width) - hy) * 0.22 + u.ox * 0.6 * (hx === next % map.width ? 1 : 0);
+    if (Math.hypot(u.x - fx, u.y - fy) > 0.05) {
+      move(u, fx, fy, der.attackWalk);
+      return true;
+    }
+    if (isSapper) {
+      const at = (sappers.get(p.id) ?? 0) + 1;
+      if (at > SIEGE.sap.perPiece) return false;
+      sappers.set(p.id, at);
+      u.act = 'sap';
+      u.work = (u.work ?? 0) + DT;
+      p.sapFrom ??= seconds;
+      p.sap = (p.sap ?? 0) + DT;
+      if (p.sap >= (p.sapNeed ?? Infinity)) {
+        breach(p, 'sap');
+        der = derive(map, bs);
+      }
+      return true;
+    }
+    u.act = 'raise';
+    u.work = (u.work ?? 0) + DT;
+    if (u.work >= SIEGE.ladder.raise) {
+      u.work = 0;
+      u.ladder = false;
+      (bs.ladders ??= []).push({ piece: p.id, tile: here, push: 0, up: true });
+      siege.laddersUp++;
+      bs.version++;
+      der = derive(map, bs);
+    }
+    return true;
   }
 
   /**
@@ -890,10 +1343,10 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     u.act = 'walk';
   }
 
-  /** Walk on to the next tile, or batter the piece standing in it. */
+  /** Walk on to the next tile, climb over it by ladder, or batter the piece standing in it. */
   function advance(u: Unit, next: number): void {
     const p = pieceAt(next);
-    if (p?.standing) {
+    if (p?.standing && !der.laddered.has(p.id)) {
       if (UNITS[u.type].batter <= 0) return; // archers wait for a way through
       // Only so many can swing at one piece; the rest wait their turn.
       const at = (batterers.get(p.id) ?? 0) + 1;
@@ -903,7 +1356,7 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
       p.batterFrom ??= seconds;
       p.hp -= UNITS[u.type].batter * DT * p.batterTaken;
       if (p.hp <= 0) {
-        breach(p);
+        breach(p, 'batter');
         der = derive(map, b as BattleState);
       }
       return;
@@ -913,12 +1366,13 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     move(u, nx + u.ox, ny + u.oy, der.attackWalk);
   }
 
-  function breach(p: PieceCombat): void {
+  function breach(p: PieceCombat, cause: 'batter' | 'sap'): void {
     const bs = b as BattleState;
     p.hp = 0;
     p.standing = false;
     p.oilLeft = 0;
     p.breachedAt = seconds;
+    p.cause = cause;
     // How many of your archers could reach the raiders at its foot when it fell.
     const foot = bs.units.filter((u) => u.side === 'attacker' && u.hp > 0 && Math.hypot(u.x - p.x, u.y - p.y) < 1.6);
     p.coveredBy = bs.units.filter((u) => u.side === 'defender' && u.hp > 0 && UNITS[u.type].bow && foot.some((f) => Math.hypot(f.x - u.x, f.y - u.y) <= reach(map, bs, u, f))).length;
@@ -929,7 +1383,10 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
 
   // The fallen.
   const dead = b.units.filter((u) => u.hp <= 0);
-  for (const u of dead) b.stats.lost[u.type]++;
+  for (const u of dead) {
+    b.stats.lost[u.type]++;
+    if (u.type === 'sapper' && (u.work ?? 0) > 0) siege.sappersKilled++;
+  }
   b.stats.escaped += escaped.size;
   if (dead.length > 0 || escaped.size > 0) b.units = b.units.filter((u) => u.hp > 0 && !escaped.has(u.id));
 
@@ -1074,6 +1531,11 @@ function buildReport(s: SimState, b: BattleState, day: number, outcome: Outcome,
 
   const walls: ReportLine[] = [];
   for (const p of breached) {
+    if (p.cause === 'sap') {
+      walls.push({ text: `Undermined: ${p.name} at ${p.x}, ${p.y} came down after ${Math.round((p.breachedAt ?? 0) - (p.sapFrom ?? 0))} seconds of sappers digging under it.`, cls: 'bad' });
+      walls.push({ text: sapWhy(s, p), cls: 'dim' });
+      continue;
+    }
     walls.push({ text: `Breached: ${p.name} at ${p.x}, ${p.y}, after ${batteredFor(p)} seconds of battering.`, cls: 'bad' });
     walls.push({ text: breachWhy(s, p), cls: 'dim' });
   }
@@ -1124,6 +1586,9 @@ function buildReport(s: SimState, b: BattleState, day: number, outcome: Outcome,
   }
   if (archers.length > 0) sections.push({ title: 'Archers and extras', lines: archers });
 
+  const siegeLines = siegeReport(b);
+  if (siegeLines.length > 0) sections.push({ title: 'Sappers, ladders and sorties', lines: siegeLines });
+
   return {
     raid: b.raid,
     day,
@@ -1138,6 +1603,59 @@ function buildReport(s: SimState, b: BattleState, day: number, outcome: Outcome,
     repairs,
     sections,
   };
+}
+
+/** What the sappers, ladder crews and your sorties did, in plain words. */
+function siegeReport(b: BattleState): ReportLine[] {
+  const st = b.stats;
+  const sg = st.siege;
+  const lines: ReportLine[] = [];
+  if (!sg) return lines;
+  const sappers = st.start.sapper;
+  const sapped = Object.values(b.pieces).filter((p) => p.cause === 'sap').length;
+  if (sappers > 0) {
+    const dug = Object.values(b.pieces).filter((p) => (p.sap ?? 0) > 0 && p.cause !== 'sap');
+    if (sapped > 0) lines.push({ text: `Sappers brought down ${plural(sapped, 'piece', 'pieces')} by digging under ${sapped === 1 ? 'it' : 'them'}.`, cls: 'bad' });
+    for (const p of dug.slice(0, 2))
+      lines.push({ text: `Sappers dug under the ${p.name.toLowerCase()} at ${p.x}, ${p.y} for ${Math.round(p.sap ?? 0)} of the ${Math.round(p.sapNeed ?? 0)} seconds it needed before they were stopped.`, cls: 'warn' });
+    if (sg.sappersKilled > 0) lines.push({ text: `${plural(sg.sappersKilled, 'sapper was', 'sappers were')} killed at work, under their timber shelters (they're hit half as often while digging).`, cls: 'good' });
+    if (sapped === 0 && dug.length === 0)
+      lines.push(
+        sg.sapSpots === 0
+          ? { text: `The ${plural(sappers, 'sapper', 'sappers')} found nowhere to dig: everything they could reach stands on rock or behind a moat.`, cls: 'good' }
+          : { text: `The ${plural(sappers, 'sapper', 'sappers')} never got to dig: they were cut down on the way in.`, cls: 'good' },
+      );
+    else lines.push({ text: 'Sappers can\'t dig through rock or across a moat. Round towers take half as long again; oil cauldrons and sorties reach them at the foot.', cls: 'dim' });
+  }
+  const crews = st.start.ladderCrew;
+  if (crews > 0) {
+    if (sg.laddersUp === 0)
+      lines.push(
+        sg.ladderSpots === 0
+          ? { text: `The ${plural(crews, 'ladder crew', 'ladder crews')} found no wall low enough to climb: a ladder reaches one level above the ground at the foot, and can't stand in a moat.`, cls: 'good' }
+          : { text: `The ${plural(crews, 'ladder crew', 'ladder crews')} never got a ladder up: they were cut down on the way in.`, cls: 'good' },
+      );
+    else {
+      lines.push({
+        text: `Ladder crews raised ${plural(sg.laddersUp, 'ladder', 'ladders')}; ${sg.laddersPushed} ${sg.laddersPushed === 1 ? 'was' : 'were'} pushed away, and ${plural(sg.climbed, 'raider', 'raiders')} climbed onto your walls.`,
+        cls: sg.climbed > 0 ? 'bad' : 'good',
+      });
+      lines.push({ text: 'Soldiers on a wall push ladders away; a High wall, a Medium wall on a mound, or a moat at its foot can\'t be laddered at all.', cls: 'dim' });
+    }
+  }
+  if (sg.sorties > 0) lines.push({ text: `Your swordsmen went out through the gate ${plural(sg.sorties, 'time', 'times')} after raiders outside.`, cls: 'good' });
+  if (sg.lobbed > 0) lines.push({ text: `${plural(sg.lobbed, 'arrow was', 'arrows were')} lobbed high over walls in the way, hitting half as often.`, cls: 'dim' });
+  return lines;
+}
+
+function sapWhy(s: SimState, p: PieceCombat): string {
+  const parts: string[] = [];
+  const piece = s.plan.pieces.find((q) => q.id === p.id) as Piece | undefined;
+  if (piece?.kind === 'wall' && piece.thickness !== 'thick') parts.push(`A thick wall takes ${SIEGE.sap.thickness.thick / SIEGE.sap.thickness[piece.thickness]}× as long to undermine.`);
+  if (piece?.kind === 'tower' && piece.shape === 'square') parts.push('A round tower takes half as long again.');
+  parts.push('A moat along its foot, or rock under it, would have kept the sappers off.');
+  if (p.coveredBy === 0) parts.push('None of your archers could reach the foot of it.');
+  return parts.join(' ');
 }
 
 /** One plain-words reason a piece fell, and what would have helped. */

@@ -28,11 +28,15 @@ export const PEOPLE = {
   archer: { body: 0xc4281c, stripe: 0xe8d9a8, hat: 'helm', tool: 'bow' },
   raider: { body: 0x2f3c66, hat: 'hood', tool: 'axe' },
   raiderArcher: { body: 0x2f3c66, hat: 'hood', tool: 'bow' },
+  // Siege raiders (M6): sappers in leather caps with picks; ladder crews with hatchets (the ladder
+  // they carry is drawn by the game, since it changes with what they're doing).
+  sapper: { body: 0x3b4252, hat: 'cap', tool: 'pick' },
+  ladderCrew: { body: 0x34466a, hat: 'cap', tool: 'axe' },
 };
 
 /** The poses each kind has, and how many frames each. */
 export function posesFor(kind) {
-  const worker = !['swordsman', 'archer', 'raider', 'raiderArcher'].includes(kind);
+  const worker = !['swordsman', 'archer', 'raider', 'raiderArcher', 'sapper', 'ladderCrew'].includes(kind);
   if (kind === 'carter') return { walk: 4, sit: 1 };
   if (worker) return { work: 4, sit: 1 };
   const bow = PEOPLE[kind].tool === 'bow';

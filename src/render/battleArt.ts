@@ -1,6 +1,6 @@
 import type { Graphics } from 'pixi.js';
 import { shade } from './terrainStyle';
-import { UNITS, type TroopType, type UnitType } from '../data/combat';
+import { SIEGE, UNITS, type TroopType, type UnitType } from '../data/combat';
 import { simConfig } from '../data/config';
 import type { BattleState, Unit } from '../sim/battle';
 import { footprint, pieceLevels } from '../sim/castle';
@@ -27,8 +27,10 @@ export function drawBattle(host: ActorHost, sim: SimState, alpha: number, timeMs
     drawGarrison(host, sim, t);
     return;
   }
+  drawSiegeWorks(host, sim, b);
   for (const u of b.units) drawUnit(host, sim, b, u, t);
   drawPieceHealth(host, sim, b);
+  drawOpenGates(host, sim, b);
   drawDust(host, b, t);
   drawBreachSmoke(host, sim, b, t, sky);
   drawBattleFire(host, sim, b, t, sky);
@@ -39,7 +41,8 @@ export function drawBattle(host: ActorHost, sim: SimState, alpha: number, timeMs
     const x = a.x0 + (a.x1 - a.x0) * k;
     const y = a.y0 + (a.y1 - a.y0) * k;
     const dist = Math.hypot(a.x1 - a.x0, a.y1 - a.y0);
-    const arc = Math.sin(k * Math.PI) * Math.min(1.5, dist * 0.18);
+    // A lob over a wall goes up high; an ordinary shot only arcs a little.
+    const arc = Math.sin(k * Math.PI) * (a.lob ? Math.min(4.5, 1.5 + dist * 0.35) : Math.min(1.5, dist * 0.18));
     const level = a.l0 + (a.l1 - a.l0) * k + arc;
     const g = host.layer(Math.round(x) + Math.round(y));
     if (!g) continue;
@@ -89,7 +92,144 @@ function drawUnit(host: ActorHost, sim: SimState, b: BattleState, u: Unit, t: nu
   const on = u.on ? b.pieces[u.on] : undefined;
   const level = on ? on.ground + drawnLevels(on.levels, on.kind) : host.ground(u.x, u.y);
   const p = isoToScreen(u.x, u.y, level);
-  drawSoldier(g, p.sx, p.sy, u.type, u.act, t + u.id * 0.37, u.hp / UNITS[u.type].hp, u.side === 'defender' && u.on !== 0, facesLeft(u.id, p.sx));
+  const left = facesLeft(u.id, p.sx);
+  const sc = style().figures.scale;
+  if (u.type === 'sapper' && u.act === 'sap') drawSpoil(g, p.sx, p.sy, Math.min(1, (u.work ?? 0) / 30), sc);
+  drawSoldier(g, p.sx, p.sy, u.type, u.act, t + u.id * 0.37, u.hp / UNITS[u.type].hp, u.on !== 0, left);
+  if (u.type === 'ladderCrew' && u.ladder) drawCarriedLadder(g, p.sx, p.sy, u.act === 'raise' ? Math.min(1, (u.work ?? 0) / SIEGE.ladder.raise) : 0, left, sc);
+  if (u.type === 'sapper' && u.act === 'sap') drawShelter(g, p.sx, p.sy, sc);
+}
+
+const LADDER_WOOD = 0x7a5530;
+const LADDER_INK = 0x2a1c10;
+
+/** A ladder from one screen point to another: two rails and rungs. */
+function drawLadder(g: Graphics, ax: number, ay: number, bx: number, by: number, width: number): void {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len = Math.max(1, Math.hypot(dx, dy));
+  // Rails either side, square to the ladder's length on screen.
+  const nx = (-dy / len) * width;
+  const ny = (dx / len) * width;
+  const rail = (s: number) => g.moveTo(ax + nx * s, ay + ny * s).lineTo(bx + nx * s, by + ny * s);
+  rail(-1).stroke({ width: 2.6, color: LADDER_INK });
+  rail(1).stroke({ width: 2.6, color: LADDER_INK });
+  rail(-1).stroke({ width: 1.3, color: LADDER_WOOD });
+  rail(1).stroke({ width: 1.3, color: LADDER_WOOD });
+  for (let d = 5; d < len - 2; d += 5) {
+    const px = ax + (dx * d) / len;
+    const py = ay + (dy * d) / len;
+    g.moveTo(px - nx, py - ny).lineTo(px + nx, py + ny).stroke({ width: 1, color: shade(LADDER_WOOD, 1.15) });
+  }
+}
+
+/** A ladder crew's ladder: over the shoulder on the march, swung up as they raise it. */
+function drawCarriedLadder(g: Graphics, sx: number, sy: number, raised: number, left: boolean, sc: number): void {
+  const dir = left ? -1 : 1;
+  const angle = 0.15 + raised * 1.1;
+  const len = 26 * sc;
+  const hx = sx;
+  const hy = sy - 13 * sc;
+  const back = { x: hx - dir * Math.cos(angle) * len * 0.45, y: hy + Math.sin(angle) * len * 0.45 };
+  const front = { x: hx + dir * Math.cos(angle) * len * 0.55, y: hy - Math.sin(angle) * len * 0.55 };
+  drawLadder(g, back.x, back.y, front.x, front.y, 2.2 * sc);
+}
+
+/** The timber shelter a sapper digs under, to keep arrows off. */
+function drawShelter(g: Graphics, sx: number, sy: number, sc: number): void {
+  const w = 10 * sc;
+  const roof = [sx - w, sy - 5 * sc, sx - w * 0.7, sy - 16 * sc, sx + w * 0.8, sy - 13 * sc, sx + w, sy - 3 * sc];
+  g.poly(roof).fill(0x6a4a2a).stroke({ width: 1.2, color: LADDER_INK });
+  for (let i = 1; i < 4; i++) {
+    const k = i / 4;
+    g.moveTo(sx - w + k * 2 * w, sy - 5 * sc + k * 2 * sc).lineTo(sx - w * 0.7 + k * 1.5 * w, sy - 16 * sc + k * 3 * sc).stroke({ width: 0.8, color: 0x4a321c });
+  }
+  // Posts down to the ground at the corners.
+  g.moveTo(sx - w, sy - 5 * sc).lineTo(sx - w, sy).moveTo(sx + w, sy - 3 * sc).lineTo(sx + w, sy + 1).stroke({ width: 1.4, color: LADDER_INK });
+}
+
+/** The heap of earth a sapper has dug out, growing as he goes. */
+function drawSpoil(g: Graphics, sx: number, sy: number, grown: number, sc: number): void {
+  const r = (4 + grown * 7) * sc;
+  g.ellipse(sx - 8 * sc, sy + 2, r, r * 0.45).fill({ color: 0x4b3a26, alpha: 0.95 });
+  g.ellipse(sx - 9 * sc, sy + 1, r * 0.6, r * 0.25).fill({ color: 0x6a5236, alpha: 0.9 });
+}
+
+/** Ladders against the walls (or lying where they were pushed away), and cracks where sappers are digging. */
+function drawSiegeWorks(host: ActorHost, sim: SimState, b: BattleState): void {
+  const w = sim.map.width;
+  for (const l of b.ladders ?? []) {
+    const pc = b.pieces[l.piece];
+    if (!pc) continue;
+    const fx = l.tile % w;
+    const fy = Math.floor(l.tile / w);
+    // The piece tile the ladder leans on: the one next to its foot.
+    const lean = pc.tiles.find((i) => Math.abs((i % w) - fx) + Math.abs(Math.floor(i / w) - fy) === 1) ?? pc.tiles[0] ?? l.tile;
+    const tx = lean % w;
+    const ty = Math.floor(lean / w);
+    const dx = tx - fx;
+    const dy = ty - fy;
+    const g = host.layer(fx + fy);
+    if (!g) continue;
+    const sc = style().figures.scale;
+    if (l.up && pc.standing) {
+      const foot = isoToScreen(fx + dx * 0.05, fy + dy * 0.05, host.ground(fx, fy));
+      const top = isoToScreen(tx - dx * 0.42, ty - dy * 0.42, pc.ground + drawnLevels(pc.levels, pc.kind) + 0.25);
+      drawLadder(g, foot.sx, foot.sy, top.sx, top.sy, 2.4 * sc);
+    } else {
+      const a = isoToScreen(fx - dx * 0.1, fy - dy * 0.1, host.ground(fx, fy));
+      const c = isoToScreen(fx - dx * 1.1, fy - dy * 1.1, host.ground(fx - dx, fy - dy));
+      drawLadder(g, a.sx, a.sy, c.sx, c.sy, 2.4 * sc);
+    }
+  }
+  for (const pc of Object.values(b.pieces)) {
+    if (!pc.standing || !(pc.sap ?? 0) || !pc.sapNeed) continue;
+    const frac = Math.min(1, (pc.sap ?? 0) / pc.sapNeed);
+    const front = Math.max(...pc.tiles.map((i) => (i % w) + Math.floor(i / w)));
+    const g = host.layer(front);
+    if (!g) continue;
+    // A crack running up the face from the foot as the ground under it is dug away.
+    const height = drawnLevels(pc.levels, pc.kind) * frac;
+    let prev = isoToScreen(pc.x + 0.3, pc.y + 0.47, pc.ground);
+    for (let k = 1; k <= 6; k++) {
+      const lv = pc.ground + (height * k) / 6;
+      const zig = (k % 2 === 0 ? 1 : -1) * 0.07;
+      const p = isoToScreen(pc.x + 0.3 + zig, pc.y + 0.47, lv);
+      g.moveTo(prev.sx, prev.sy).lineTo(p.sx, p.sy).stroke({ width: 1.6, color: 0x1a1612, alpha: 0.85 });
+      prev = p;
+    }
+  }
+}
+
+/** A gatehouse drawn open for a moment as soldiers go through: the passage dark, the portcullis up. */
+function drawOpenGates(host: ActorHost, sim: SimState, b: BattleState): void {
+  for (const pc of Object.values(b.pieces)) {
+    if (pc.kind !== 'gatehouse' || !pc.standing || (pc.openUntil ?? 0) <= b.tick) continue;
+    const piece = sim.plan.pieces.find((p) => p.id === pc.id);
+    if (!piece || piece.kind !== 'gatehouse') continue;
+    const g = host.layer(pc.x + pc.y);
+    if (!g) continue;
+    const ground = pc.ground;
+    const w = 0.2;
+    const spring = ground + 1;
+    const along = (u: number, lv: number) => {
+      const p = piece.axis === 'x' ? isoToScreen(pc.x + 0.47, pc.y + u, lv) : isoToScreen(pc.x + u, pc.y + 0.47, lv);
+      return [p.sx, p.sy];
+    };
+    const pts: number[] = [...along(-w, ground), ...along(-w, spring)];
+    for (let i = 1; i < 8; i++) {
+      const a = Math.PI - (i / 8) * Math.PI;
+      pts.push(...along(w * Math.cos(a), spring + 0.45 * Math.sin(a)));
+    }
+    pts.push(...along(w, spring), ...along(w, ground));
+    g.poly(pts).fill(0x0c0a08);
+    // The portcullis drawn up into the arch: just its spikes showing.
+    for (let i = -2; i <= 2; i++) {
+      const [ax, ay] = along((i * w) / 2.5, spring + 0.25) as [number, number];
+      const [bx, by] = along((i * w) / 2.5, spring + 0.42) as [number, number];
+      g.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 1, color: 0x6b5a40, alpha: 0.9 });
+    }
+  }
 }
 
 /** A soldier or raider. `act` sets the pose; a bar shows wounds. Drawn at the active style's size and colours. */
@@ -104,6 +244,7 @@ export function drawSoldier(
   onWall = false,
   left = false,
 ): void {
+  // Digging under a wall and raising a ladder use the fighting frames (a swing of the pick or the arms).
   const pose: Pose = act === 'walk' ? 'walk' : act === 'shoot' ? 'shoot' : act === 'stand' ? 'stand' : UNITS[type].bow ? 'stand' : 'fight';
   const painted = paintedFrames(`${type}.${pose}`);
   if (painted) {
@@ -153,7 +294,7 @@ export function drawSoldier(
     g.moveTo(bx, by - 5).lineTo(bx - draw, by).lineTo(bx, by + 5).stroke({ width: 0.5, color: 0xe8e2d0, alpha: 0.8 });
   } else {
     // Sword (or axe for raiders) swung when fighting or battering; a small shield for the garrison.
-    const busy = act === 'fight' || act === 'batter' || act === 'loot';
+    const busy = act === 'fight' || act === 'batter' || act === 'loot' || act === 'sap' || act === 'raise';
     const swing = busy ? Math.sin(t * (act === 'batter' ? 6 : 8)) : -0.3;
     const hx = 2.4;
     const hy = top + 2;
