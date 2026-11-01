@@ -1,7 +1,6 @@
 import { ECONOMY, WAGE_LEVELS, WORKER_TYPES, WORKERS, type WageLevel, type WorkerType } from '../data/economy';
 import { isWinter } from '../sim/calendar';
 import {
-  buy,
   dailyWages,
   efficiencyParts,
   harvestDue,
@@ -12,7 +11,7 @@ import {
   totalWorkers,
   type Purchase,
 } from '../sim/economy';
-import { today } from '../sim/state';
+import { buySupplies, today } from '../sim/state';
 import { button, crowns, el, setClass, setText } from './dom';
 import type { GameHost } from './host';
 
@@ -81,7 +80,7 @@ export class WorkersPanel {
     for (const item of ['stone', 'timber', 'food', 'fill'] as const) {
       shopRow.append(
         button(`${ECONOMY.lots[item]} ${names[item]} (${purchasePrice(item)})`, () => {
-          const problem = buy(host.sim.economy, item);
+          const problem = buySupplies(host.sim, item);
           setText(this.notice, problem ?? `Bought ${ECONOMY.lots[item]} ${names[item]}.`);
           setClass(this.notice, problem ? 'bad' : 'good');
         }),

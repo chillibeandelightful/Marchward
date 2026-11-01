@@ -45,7 +45,7 @@ const TOOLS: readonly { id: ToolId; name: string; key: string; help: string }[] 
   { id: 'look', name: 'Look', key: '1', help: 'Point at land or pieces to see their numbers. Drag to move the view.' },
   { id: 'wall', name: 'Wall', key: '2', help: 'Drag from one tile to another to lay a line of wall. Turn on arrow slits or an oil cauldron to build them into every piece you lay.' },
   { id: 'tower', name: 'Tower', key: '3', help: 'Click to place. Placing on a wall turns that wall into a tower. Turn on arrow slits or an oil cauldron to build them in.' },
-  { id: 'gatehouse', name: 'Gatehouse', key: '4', help: 'Click to place, usually in a wall. R turns the passage. Turn on arrow slits or an oil cauldron to build them in.' },
+  { id: 'gatehouse', name: 'Gatehouse', key: '4', help: 'Click to place, usually in a wall: three tiles across, with a tower either side of the arch. R turns the passage. A castle can have more than one. Dig a moat across the end of the passage for a drawbridge.' },
   { id: 'keep', name: 'Keep', key: '5', help: 'Covers 2×2 tiles of level ground. Put it inside the walls.' },
   {
     id: 'raise',
@@ -179,7 +179,7 @@ export class Designer {
     this.notice = null;
     const locked = this.host.locked();
     if (locked === 'fight') {
-      this.notice = { text: 'The fight is on: your soldiers act on their own until it ends (classic control)', bad: true };
+      this.notice = { text: 'The fight is on: your soldiers act on their own (Classic control). Choose Commander in the Defence tab to give them orders.', bad: true };
       return;
     }
     if (locked === 'deploy' && this.tool !== 'troops') {
@@ -272,7 +272,7 @@ export class Designer {
       case 'tower':
         return [{ kind: 'tower', x: h.x, y: h.y, shape: this.towerShape, height: this.towerHeight }];
       case 'gatehouse':
-        return [{ kind: 'gatehouse', x: h.x, y: h.y, axis: this.gateAxis(view, h) }];
+        return [{ kind: 'gatehouse', x: h.x, y: h.y, axis: this.gateAxis(view, h), wide: true }];
       case 'keep':
         return [{ kind: 'keep', x: h.x, y: h.y }];
       default:
@@ -492,7 +492,7 @@ export class Designer {
       case 'tower':
         return { kind: 'tower', x, y, shape: this.towerShape, height: this.towerHeight };
       case 'gatehouse':
-        return { kind: 'gatehouse', x, y, axis: 'x' };
+        return { kind: 'gatehouse', x, y, axis: 'x', wide: true };
       case 'keep':
         return { kind: 'keep', x, y };
       default:
@@ -543,7 +543,7 @@ function planLines(r: PlanReport, plan: CastlePlan): Line[] {
   const e = r.earthworks;
   const lines: Line[] = [
     { text: 'Your plan', cls: 'head' },
-    { text: `${count('wall')} wall tiles · ${count('tower')} towers · ${r.gatehouses} gatehouse · ${r.keeps} keep` },
+    { text: `${count('wall')} wall tiles · ${count('tower')} towers · ${r.gatehouses} ${r.gatehouses === 1 ? 'gatehouse' : 'gatehouses'} · ${r.keeps} keep` },
     { text: `Total: ${formatCost(r.cost)}` },
     {
       text:
@@ -561,7 +561,7 @@ function planLines(r: PlanReport, plan: CastlePlan): Line[] {
   lines.push(
     { text: 'Checks', cls: 'head' },
     tick(r.keeps === 1, 'Keep placed', 'Needs a keep'),
-    tick(r.gatehouses === 1, 'Gatehouse placed', 'Needs a gatehouse'),
+    tick(r.gatehouses >= 1, r.gatehouses > 1 ? `${r.gatehouses} gatehouses placed` : 'Gatehouse placed', 'Needs a gatehouse'),
     tick(r.keepEnclosed, 'Keep is enclosed (walls, cliffs or deep water)', r.keeps ? 'Attackers can walk up to the keep' : 'Nothing enclosed yet'),
   );
   if (r.curtainParts > 1) lines.push({ text: `⚠ The walls are in ${r.curtainParts} separate pieces`, cls: 'warn' });

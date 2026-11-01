@@ -1,7 +1,8 @@
 import { Matrix, type Graphics, type StrokeStyle, type Texture } from 'pixi.js';
-import { WALL_THICKNESS } from '../data/castle';
+import { GATEHOUSE, WALL_THICKNESS } from '../data/castle';
 import {
   footprint,
+  gateFlanks,
   hasSlits,
   isCurtain,
   linked,
@@ -154,8 +155,16 @@ export class CastleArt implements RowExtras {
         else drawSquareTower(g, p.x, p.y, 0.42, base, top, pal, finished, hasSlits(p));
         break;
       case 'gatehouse':
-        drawGatehouse(g, p.x, p.y, p.axis, base, top, pal, finished);
-        if (finished && p.slits) {
+        if (p.wide) {
+          // The flanking towers rise a level above the arch, in step as it is built.
+          const extra = drawnLevels(GATEHOUSE.flankLevels, 'tower');
+          const flankTop = top + (full - base > 0 ? extra * ((top - base) / (full - base)) : 0);
+          const [back, front] = gateFlanks(p);
+          drawSquareTower(g, back[0], back[1], 0.52, base, flankTop, pal, finished, hasSlits(p));
+          drawGatehouse(g, p.x, p.y, p.axis, base, top, pal, finished);
+          drawSquareTower(g, front[0], front[1], 0.52, base, flankTop, pal, finished, hasSlits(p));
+        } else drawGatehouse(g, p.x, p.y, p.axis, base, top, pal, finished);
+        if (finished && p.slits && !p.wide) {
           const b: Box = { x0: p.x - 0.47, y0: p.y - 0.47, x1: p.x + 0.47, y1: p.y + 0.47, base, top };
           slit(g, b, p.axis === 'x' ? 'left' : 'right', p.axis === 'x' ? p.x : p.y, top - 1.1, 0.04, 0.55, pal.dark);
         }

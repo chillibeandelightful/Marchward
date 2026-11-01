@@ -237,4 +237,43 @@ export const SIEGE = {
     /** Seconds the gate stays drawn open after someone passes. */
     gateOpen: 1.5,
   },
+  /**
+   * A finished gatehouse whose passage opens onto a moat (or water) has a drawbridge there. It is
+   * raised while the gate is shut, so raiders must batter it down (this many HP) before the gate,
+   * standing in the moat, where they swing at this share of their usual rate. Your soldiers cross
+   * on it, lowered for them, as if the moat weren't there.
+   */
+  drawbridge: { hp: 160, batter: 0.75 },
+  /** Battering a gatehouse anywhere but at its gate (the solid stone beside it) goes at this share of the usual rate. */
+  gateFlankBatter: 0.5,
+  /**
+   * Sieges with food on both sides. From raid `from`, every `every`th raid brings a siege train: if
+   * its assault fails without the raiders breaking (they give up, or find no way in) and at least
+   * `minRaiders` are left, they camp round the castle and try to starve it out.
+   */
+  blockade: {
+    from: 3,
+    every: 2,
+    minRaiders: 4,
+    /** Days of food the besiegers bring: base + perRaid × raid number. */
+    supplies: { base: 18, perRaid: 3 },
+    /** Besiegers' morale (out of 100) lost each day, each day once their food is gone, and for each of them killed. */
+    moraleDaily: 2,
+    moraleHungry: 12,
+    moralePerLoss: 4,
+    /** Chance each day that each of your archers brings down a besieger. */
+    pickOff: 0.04,
+    /** Days with empty stores before the castle has to yield. */
+    starveDays: 6,
+    /** Yielding: share of crowns handed over, and standing lost. */
+    yieldCrowns: 0.3,
+    yieldStanding: 12,
+    /** Standing gained when they give up and go. */
+    liftedStanding: 6,
+    /** Buying them off: crowns per besieger, and standing lost for paying. */
+    bribePerRaider: 40,
+    bribeStanding: 4,
+    /** They camp about this many tiles out from the nearest piece, beyond bowshot. */
+    campDistance: 9,
+  },
 };

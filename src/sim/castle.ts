@@ -29,7 +29,14 @@ export type PieceExtras = Partial<Record<ExtraId, boolean>>;
 export type PieceSpec = (
   | { kind: 'wall'; x: number; y: number; thickness: Thickness; height: HeightClass }
   | { kind: 'tower'; x: number; y: number; shape: TowerShape; height: HeightClass }
-  | { kind: 'gatehouse'; x: number; y: number; axis: Axis }
+  | {
+      kind: 'gatehouse';
+      x: number;
+      y: number;
+      axis: Axis;
+      /** Three tiles across the passage, with a tower either side; missing (saves from before M6 part 2) for a one-tile narrow gate. */
+      wide?: boolean;
+    }
   | { kind: 'keep'; x: number; y: number }
 ) &
   PieceExtras;
@@ -65,6 +72,10 @@ export function isCurtain(kind: PieceKind): boolean {
 }
 
 export function footprint(p: PieceSpec): [number, number][] {
+  if (p.kind === 'gatehouse' && p.wide) {
+    const [a, b] = gateFlanks(p);
+    return [a, [p.x, p.y], b];
+  }
   if (p.kind !== 'keep') return [[p.x, p.y]];
   const out: [number, number][] = [];
   for (let dy = 0; dy < KEEP.size; dy++) for (let dx = 0; dx < KEEP.size; dx++) out.push([p.x + dx, p.y + dy]);
@@ -139,6 +150,24 @@ export function gateEnds(p: { x: number; y: number; axis: Axis }): [[number, num
       ];
 }
 
+/** The two flanking tiles of a wide gatehouse, either side of its passage (back one first). */
+export function gateFlanks(p: { x: number; y: number; axis: Axis }): [[number, number], [number, number]] {
+  return p.axis === 'x'
+    ? [
+        [p.x, p.y - 1],
+        [p.x, p.y + 1],
+      ]
+    : [
+        [p.x - 1, p.y],
+        [p.x + 1, p.y],
+      ];
+}
+
+/** Ends of a gatehouse passage that open onto a moat or water: each gets a drawbridge once the gatehouse is finished. */
+export function bridgeEnds(map: TerrainMap, p: { x: number; y: number; axis: Axis }): [number, number][] {
+  return gateEnds(p).filter(([x, y]) => inBounds(map, x, y) && isMoatLike(map, x, y));
+}
+
 /** Rules that depend only on the land under a piece and the pieces around it. */
 function groundProblem(view: PlanView, p: PieceSpec, self?: Piece): string | null {
   const { map } = view;
@@ -153,6 +182,7 @@ function groundProblem(view: PlanView, p: PieceSpec, self?: Piece): string | nul
     if (tiles.some(([x, y]) => heightAt(map, x, y) !== h)) return 'The keep needs level ground (use earthworks)';
   }
   if (p.kind === 'gatehouse') {
+    if (p.wide && gateFlanks(p).some(([x, y]) => !joined(map, p.x, p.y, x, y))) return 'The gatehouse can\'t stand across a cliff';
     for (const [x, y] of gateEnds(p)) {
       if (!inBounds(map, x, y)) return 'The gate opens off the edge of the map';
       if (!canStep(map, p.x, p.y, x, y)) return 'The gate opens onto a cliff or deep water';
@@ -175,7 +205,7 @@ export interface PlacementCheck {
 
 /**
  * Check a batch of pieces (one click, or one dragged line of wall) against the rules:
- * free ground, foundations, one keep and gatehouse, no wall across a cliff, and new
+ * free ground, foundations, one keep, no wall across a cliff, and new
  * curtain joined to the existing curtain.
  */
 export function checkPlacement(base: TerrainMap, plan: CastlePlan, specs: readonly PieceSpec[]): PlacementCheck {
@@ -194,12 +224,11 @@ export function checkPlacement(base: TerrainMap, plan: CastlePlan, specs: readon
       else set(i, 'Something is already built here');
     }
     for (const g of plan.pieces)
-      if (g.kind === 'gatehouse' && gateEnds(g).some(([x, y]) => x === s.x && y === s.y))
+      if (g.kind === 'gatehouse' && gateEnds(g).some(([x, y]) => footprint(s).some(([sx, sy]) => x === sx && y === sy)))
         set(i, 'That would block the gate passage');
     const ground = groundProblem(view, s);
     if (ground) set(i, ground);
     if (s.kind === 'keep' && count('keep') > 1) set(i, 'A castle has only one keep');
-    if (s.kind === 'gatehouse' && count('gatehouse') > 1) set(i, 'A castle has only one gatehouse');
     const prev = specs[i - 1];
     const adjacent = prev && Math.abs(prev.x - s.x) + Math.abs(prev.y - s.y) === 1;
     if (adjacent && !joined(view.map, prev.x, prev.y, s.x, s.y)) set(i, "A wall can't cross a cliff");
@@ -210,10 +239,12 @@ export function checkPlacement(base: TerrainMap, plan: CastlePlan, specs: readon
   const curtain = specs.filter((s) => isCurtain(s.kind));
   if (hasCurtain && curtain.length > 0 && replaces.length === 0) {
     const touches = curtain.some((s) =>
-      NEIGHBOURS.some(([dx, dy]) => {
-        const other = pieceAt(view, s.x + dx, s.y + dy);
-        return !!other && isCurtain(other.kind) && joined(view.map, s.x, s.y, s.x + dx, s.y + dy);
-      }),
+      footprint(s).some(([sx, sy]) =>
+        NEIGHBOURS.some(([dx, dy]) => {
+          const other = pieceAt(view, sx + dx, sy + dy);
+          return !!other && isCurtain(other.kind) && joined(view.map, sx, sy, sx + dx, sy + dy);
+        }),
+      ),
     );
     if (!touches) curtain.forEach((s) => set(specs.indexOf(s), 'New walls must join the existing walls'));
   }
@@ -320,8 +351,6 @@ export function moatProblem(base: TerrainMap, plan: CastlePlan, x: number, y: nu
   if (t.id === 'rock') return 'Rocky ground: a moat cannot be dug';
   if (!t.canLower) return `${t.name} can't be dug`;
   if (plan.pieces.some((p) => footprint(p).some(([px, py]) => px === x && py === y))) return 'Something is built here';
-  if (plan.pieces.some((p) => p.kind === 'gatehouse' && gateEnds(p).some(([gx, gy]) => gx === x && gy === y)))
-    return 'That would cut the way to the gate (a drawbridge comes later)';
   const h = heightAt(base, x, y) + Math.min(0, plan.earthworks[i] ?? 0) - 1;
   if (h < 0) return 'Already as low as the land can go';
   return null;
@@ -434,7 +463,7 @@ export function pieceCost(map: TerrainMap, p: PieceSpec): Cost {
       break;
     }
     case 'gatehouse':
-      cost = { ...GATEHOUSE.cost };
+      cost = { ...(p.wide ? GATEHOUSE.cost : GATEHOUSE.narrow.cost) };
       break;
     case 'keep':
       cost = { ...KEEP.cost };
@@ -471,7 +500,7 @@ export function pieceHp(p: PieceSpec): number {
     case 'tower':
       return TOWER_SHAPE[p.shape].hp;
     case 'gatehouse':
-      return GATEHOUSE.hp;
+      return p.wide ? GATEHOUSE.hp : GATEHOUSE.narrow.hp;
     case 'keep':
       return KEEP.hp;
   }
@@ -514,7 +543,7 @@ export function pieceName(p: PieceSpec): string {
     case 'tower':
       return `${TOWER_HEIGHT[p.height].name} ${TOWER_SHAPE[p.shape].name.toLowerCase()} tower`;
     case 'gatehouse':
-      return GATEHOUSE.name;
+      return p.wide ? GATEHOUSE.name : GATEHOUSE.narrow.name;
     case 'keep':
       return KEEP.name;
   }
@@ -593,6 +622,8 @@ export function pieceStats(view: PlanView, p: PieceSpec): PieceStats {
     }
     case 'gatehouse':
       notes.push('Your troops can pass through; raiders have to batter the gate down');
+      if (bridgeEnds(map, p).length > 0) notes.push('Drawbridge over the moat: raised while the gate is shut, so raiders must batter it down first, standing in the moat');
+      else notes.push('Dig a moat across the end of the passage (Moat tool) for a drawbridge');
       break;
     case 'keep':
       notes.push('Required. Should stand inside the walls. Raiders make for it to plunder it');
@@ -636,7 +667,7 @@ export interface PlanReport {
   curtainParts: number;
   /** Placed pieces that break a rule on the planned land (for example after earthworks). */
   problems: PlanProblem[];
-  /** One keep, one gatehouse, keep enclosed and no problems. */
+  /** One keep, at least one gatehouse, keep enclosed and no problems. */
   ready: boolean;
 }
 
@@ -676,7 +707,7 @@ export function planReport(base: TerrainMap, view: PlanView): PlanReport {
     keepEnclosed,
     curtainParts: countCurtainParts(view),
     problems,
-    ready: keeps === 1 && gatehouses === 1 && keepEnclosed === true && problems.length === 0,
+    ready: keeps === 1 && gatehouses >= 1 && keepEnclosed === true && problems.length === 0,
   };
 }
 
