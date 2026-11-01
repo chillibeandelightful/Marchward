@@ -2,10 +2,11 @@ import { CALENDAR, ECONOMY } from '../data/economy';
 import { kestrelFord } from '../data/sites/kestrelFord';
 import { dateOf, formatDate, isWinter } from './calendar';
 import { createPlan, type CastlePlan } from './castle';
-import { collectHarvest, collectTaxes, createEconomy, efficiency, hire, mouths, newMonth, payAndFeed, totalWorkers, type EconomyState } from './economy';
+import { buy, collectHarvest, collectTaxes, createEconomy, efficiency, hire, mouths, newMonth, payAndFeed, totalWorkers, type EconomyState, type Purchase } from './economy';
 import { Rng } from './rng';
 import { chooseApproach, endBattle, startBattle, stepBattle } from './battle';
 import { addReport, createDefence, describeStrength, raidStrength, scheduleRaid, type DefenceState } from './defence';
+import { beginSiege, isSiegeRaid, siegeDay, siegeSupplies } from './siege';
 import { RAIDS } from '../data/combat';
 import { buildSite, type Point, type SiteDef } from './site';
 import type { TerrainMap } from './terrain';
@@ -122,14 +123,17 @@ export function stepSim(state: SimState): TickEvents {
       const built = summariseWorks(state.map, state.plan, e, state.works, day).builtLabour;
       addLog(state, `Spring taxes collected: +${collectTaxes(e, built)} crowns.`);
     }
-    if (date.season === 'autumn' && CALENDAR.seasons[date.month - 1] !== 'autumn')
-      addLog(state, `Harvest dues: +${collectHarvest(e)} rations of food.`);
+    if (date.season === 'autumn' && CALENDAR.seasons[date.month - 1] !== 'autumn') {
+      if (state.defence.siege) addLog(state, 'No harvest dues this year: the besiegers sit on the fields.');
+      else addLog(state, `Harvest dues: +${collectHarvest(e)} rations of food.`);
+    }
     if (date.season === 'winter' && CALENDAR.seasons[date.month - 1] !== 'winter')
       addLog(state, 'Winter: building stops until spring. Workers are kept on at half pay.');
     if (date.month === 0 && date.year > 1) addLog(state, 'Spring: building starts again.');
   }
 
-  hire(e, rng, winter);
+  // Nobody new gets through a siege.
+  if (!state.defence.siege) hire(e, rng, winter);
   const lowFood = (food: number) => food < mouths(e) * ECONOMY.rationsPerWorker * ECONOMY.lowFoodDays;
   const wasLow = lowFood(e.stores.food);
   const left = payAndFeed(e, rng, winter);
@@ -171,7 +175,14 @@ export function stepSim(state: SimState): TickEvents {
     if (state.history.length > ECONOMY.maxSamples) state.history.splice(0, state.history.length - ECONOMY.maxSamples);
   }
 
-  if (state.defence.raids) raidCheck(state, rng, day, events);
+  if (state.defence.siege) {
+    const r = siegeDay(state, rng, day);
+    for (const line of r.log) addLog(state, line);
+    if (r.ended) {
+      addLog(state, r.ended.headline);
+      events.battleEnded = true;
+    }
+  } else if (state.defence.raids) raidCheck(state, rng, day, events);
 
   state.rngState = rng.getState();
   return events;
@@ -185,10 +196,13 @@ function raidCheck(state: SimState, rng: Rng, day: number, events: TickEvents): 
     events.raidWarning = true;
     // The raiders' scouts have looked the castle over too: they come where it looks weakest.
     d.from = chooseApproach(state, rng);
+    const n = d.raidCount + 1;
     addLog(
       state,
-      `Scouts report raiders gathering to the ${d.from}: ${describeStrength(raidStrength(d.raidCount + 1))}, expected about ${formatDate(d.nextRaid)}. Post your soldiers with the Troops tool (0).`,
+      `Scouts report raiders gathering to the ${d.from}: ${describeStrength(raidStrength(n))}, expected about ${formatDate(d.nextRaid)}. Post your soldiers with the Troops tool (0).`,
     );
+    if (isSiegeRaid(n))
+      addLog(state, `They bring a siege train with about ${siegeSupplies(n)} days of food: if they can't break in, they will camp outside and try to starve you out. Lay in food now.`);
   }
   if (day >= d.nextRaid) beginBattle(state, rng, events);
 }
@@ -208,10 +222,24 @@ function stepBattleTick(state: SimState, events: TickEvents): void {
   events.pieces = r.pieces;
   if (r.ended) {
     const day = today(state);
+    const b = state.defence.battle;
+    const left = b ? b.units.filter((u) => u.side === 'attacker').length + b.stats.escaped : 0;
+    const settle = b && (b.why === 'gave up' || b.why === 'no way');
     const report = endBattle(state, day);
+    const siege = b && settle ? beginSiege(state, b.raid, b.from, left, day) : null;
+    if (siege) {
+      report.headline = `Raid ${siege.raid}: the assault failed, so ${siege.raiders} raiders have camped outside to starve you out.`;
+      report.sections.unshift({
+        title: 'A siege begins',
+        lines: [
+          { text: `They have about ${siege.supplies} days of food. Your stores hold ${Math.round(state.economy.stores.food)} rations, about ${Math.floor(state.economy.stores.food / Math.max(1, mouths(state.economy)))} days for everyone on site.`, cls: 'warn' },
+          { text: 'Nothing can be bought or brought in, nobody new arrives, and there are no harvest dues while they sit outside. Your archers pick off any who come near. Fewer mouths (let workers go) make the food last; you can also pay them to leave, in the Defence tab.', cls: 'dim' },
+        ],
+      });
+    }
     addReport(state.defence, report);
     addLog(state, report.headline);
-    scheduleRaid(state.defence, rng, day);
+    if (!siege) scheduleRaid(state.defence, rng, day);
     events.battleEnded = true;
     events.pieces = true;
   }
@@ -221,11 +249,17 @@ function stepBattleTick(state: SimState, events: TickEvents): void {
 /** Bring the next raid on now, without waiting for it (for playtesting the defences). */
 export function raidNow(state: SimState): TickEvents {
   const events: TickEvents = { newDay: false, newMonth: false, land: [], pieces: true, raidWarning: false, battleStarted: false, battleEnded: false, battle: false };
-  if (state.defence.battle) return events;
+  if (state.defence.battle || state.defence.siege) return events;
   const rng = new Rng(state.rngState);
   beginBattle(state, rng, events);
   state.rngState = rng.getState();
   return events;
+}
+
+/** Buy one lot of supplies, unless besiegers are camped outside. Returns a problem, or null if bought. */
+export function buySupplies(state: SimState, item: Purchase): string | null {
+  if (state.defence.siege) return 'The castle is besieged: no traders can get through.';
+  return buy(state.economy, item);
 }
 
 export function dateLine(state: SimState): string {

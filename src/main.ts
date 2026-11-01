@@ -11,6 +11,7 @@ import { findPath, landCost } from './sim/path';
 import { footprint } from './sim/castle';
 import { inBounds } from './sim/terrain';
 import { drawBattle } from './render/battleArt';
+import { Commander } from './ui/command';
 import { DefencePanel } from './ui/defencePanel';
 import { ReportView } from './ui/reportView';
 import { pieceProgress, summariseWorks, type WorksSummary } from './sim/works';
@@ -416,7 +417,8 @@ async function start(): Promise<void> {
       plan.setGrid(terrain.gridVisible);
       planDirty = true;
     },
-    canPan: (e) => !designer.wantsPress(e.button),
+    // In a Commander battle the left button gives orders; the right one still pans.
+    canPan: (e) => !(e.button === 0 && commander.active()) && !designer.wantsPress(e.button),
   });
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyV') forcePlanned = !forcePlanned;
@@ -430,12 +432,25 @@ async function start(): Promise<void> {
   const hud = new Hud(readoutEl);
 
   let hovered: TileShape | null = null;
+  const worldAt = (e: MouseEvent) => {
+    const p = input.local(e);
+    return camera.screenToWorld(p.x, p.y, app.screen.width, app.screen.height);
+  };
   app.canvas.addEventListener('pointerdown', (e) => {
+    if (e.button === 0 && commander.active()) {
+      app.canvas.setPointerCapture(e.pointerId);
+      commander.press(worldAt(e));
+      return;
+    }
     if (!designer.wantsPress(e.button)) return;
     app.canvas.setPointerCapture(e.pointerId);
     designer.press(hovered);
   });
-  const release = () => designer.release();
+  app.canvas.addEventListener('pointermove', (e) => commander.drag(worldAt(e)));
+  const release = (e: PointerEvent) => {
+    if (e.button === 0 && commander.active()) commander.release(worldAt(e), hovered ? { x: hovered.x, y: hovered.y } : null, e.shiftKey, camera.zoom);
+    designer.release();
+  };
   app.canvas.addEventListener('pointerup', release);
   app.canvas.addEventListener('pointercancel', release);
 
@@ -449,7 +464,9 @@ async function start(): Promise<void> {
     const w = map.width;
     const blocked = new Uint8Array(w * map.height);
     for (const p of plan.pieces)
-      if (p.kind !== 'gatehouse' && pieceProgress(map, sim.works, p) >= 0.5) for (const [x, y] of footprint(p)) blocked[y * w + x] = 1;
+      // Carts go through a gatehouse's passage, but not its flanking towers.
+      if (pieceProgress(map, sim.works, p) >= 0.5)
+        for (const [x, y] of footprint(p)) if (p.kind !== 'gatehouse' || x !== p.x || y !== p.y) blocked[y * w + x] = 1;
     const goal = (i: number) => Math.abs((i % w) - to[0]) + Math.abs(Math.floor(i / w) - to[1]) <= 1 && !blocked[i];
     const path = inBounds(map, from[0], from[1])
       ? findPath(map, from[1] * w + from[0], goal, to, (a, b) => (blocked[b] ? null : landCost(map, a, b)), 400)
@@ -466,6 +483,7 @@ async function start(): Promise<void> {
     const s = shapeAt[ty * sim.map.width + tx];
     return s ? surfaceLevel(s.corners, x - tx, y - ty) : 0;
   };
+  const commander = new Commander(() => sim, ground);
 
   if (import.meta.env.DEV) {
     // For automated screenshots in development: where a tile's centre is on screen, and a fast-forward.
@@ -617,6 +635,7 @@ async function start(): Promise<void> {
     const actors = { layer: (d: number) => terrain.actorsFor(d), ground, route };
     drawWorkers(actors, sim, performance.now());
     drawBattle(actors, sim, loop.alpha, performance.now(), sky);
+    commander.draw(sky);
 
     hud.update(sim, view.map, hovered, designer.hoverLines());
     topBar.update();

@@ -78,8 +78,12 @@ export class TopBar {
       const c = battleCounts(b);
       setText(
         this.alert,
-        `⚔ Raid ${b.raid}, ${Math.floor(battleSeconds(b))}s · raiders left ${c.attackers} · your soldiers ${c.defenders}${b.phase === 'retreat' ? ' · they are falling back' : ''}${speed === 0 ? (deploying(b) ? ' · post troops with tool 0, then press Space to fight' : ' · paused: press Space to fight') : ''}`,
+        `⚔ Raid ${b.raid}, ${Math.floor(battleSeconds(b))}s · raiders left ${c.attackers} · your soldiers ${c.defenders}${b.phase === 'retreat' ? ' · they are falling back' : ''}${speed === 0 ? (deploying(b) ? ' · post troops with tool 0, then press Space to fight' : ' · paused: press Space to fight') : ''}${def.control === 'commander' && !deploying(b) && b.phase === 'fight' ? ' · click or drag round your soldiers, then click where to go or a raider to attack' : ''}`,
       );
+      setClass(this.alert, 'alert bad');
+    } else if (def.siege) {
+      const s = def.siege;
+      setText(this.alert, `⛺ Besieged: ${s.raiders} raiders camped to the ${s.from} · their food: ${s.supplies > 0 ? `${s.supplies} days` : 'gone'} · their morale ${Math.max(0, Math.round(s.morale))}% · nothing can be bought`);
       setClass(this.alert, 'alert bad');
     } else if (def.raids && def.warned) {
       setText(this.alert, `Raiders expected in ${def.nextRaid - day} days, from the ${def.from}. Post your soldiers with the Troops tool (0).`);

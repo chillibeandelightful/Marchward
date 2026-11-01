@@ -3,7 +3,7 @@ import { shade } from './terrainStyle';
 import { SIEGE, UNITS, type TroopType, type UnitType } from '../data/combat';
 import { simConfig } from '../data/config';
 import type { BattleState, Unit } from '../sim/battle';
-import { footprint, pieceLevels } from '../sim/castle';
+import { bridgeEnds, footprint, pieceLevels } from '../sim/castle';
 import { postCapacity } from '../sim/defence';
 import type { SimState } from '../sim/state';
 import { heightAt } from '../sim/terrain';
@@ -23,8 +23,10 @@ import type { ActorHost } from './workersArt';
 export function drawBattle(host: ActorHost, sim: SimState, alpha: number, timeMs: number, sky?: Graphics): void {
   const b = sim.defence.battle;
   const t = timeMs / 1000;
+  drawDrawbridges(host, sim, b);
   if (!b) {
     drawGarrison(host, sim, t);
+    drawSiegeCamp(host, sim, t);
     return;
   }
   drawSiegeWorks(host, sim, b);
@@ -197,6 +199,119 @@ function drawSiegeWorks(host: ActorHost, sim: SimState, b: BattleState): void {
       const p = isoToScreen(pc.x + 0.3 + zig, pc.y + 0.47, lv);
       g.moveTo(prev.sx, prev.sy).lineTo(p.sx, p.sy).stroke({ width: 1.6, color: 0x1a1612, alpha: 0.85 });
       prev = p;
+    }
+  }
+}
+
+const TENT = 0xa8835a;
+const TENT_DARK = 0x6e5236;
+
+/** Besiegers camped out of bowshot: tents, a fire, and some of them standing about. */
+function drawSiegeCamp(host: ActorHost, sim: SimState, t: number): void {
+  const s = sim.defence.siege;
+  if (!s) return;
+  const w = sim.map.width;
+  const cx = s.camp % w;
+  const cy = Math.floor(s.camp / w);
+  const tents = Math.min(7, Math.max(2, Math.ceil(s.raiders / 3)));
+  const spots: [number, number][] = [];
+  for (let i = 0; i < tents; i++) {
+    const a = i * 2.4 + 0.6;
+    const r = 1.1 + (i % 3) * 0.45;
+    spots.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+  }
+  spots.sort((p, q) => p[0] + p[1] - (q[0] + q[1]));
+  for (const [x, y] of spots) {
+    const g = host.layer(Math.round(x) + Math.round(y));
+    if (!g) continue;
+    const lv = host.ground(x, y);
+    const at = (dx: number, dy: number, up: number) => {
+      const p = isoToScreen(x + dx, y + dy, lv + up);
+      return [p.sx, p.sy];
+    };
+    // A ridge tent along x: the two sloping sides we can see, and the front gable.
+    const h = 1.25;
+    const l = 0.42;
+    const w = 0.34;
+    g.poly([...at(-l, 0, h), ...at(l, 0, h), ...at(l, w, 0), ...at(-l, w, 0)]).fill(TENT).stroke({ width: 0.8, color: TENT_DARK });
+    g.poly([...at(l, 0, h), ...at(l, w, 0), ...at(l, -w, 0)]).fill(TENT_DARK).stroke({ width: 0.8, color: shade(TENT_DARK, 0.7) });
+    g.poly([...at(l, 0, h * 0.55), ...at(l, 0.1, 0), ...at(l, -0.1, 0)]).fill(0x2a2118);
+    // A pole with a scrap of red cloth: not your people.
+    const [px, py] = at(-l * 0.7, 0, h) as [number, number];
+    g.moveTo(px, py).lineTo(px, py - 9).stroke({ width: 1, color: 0x3a2a1a });
+    g.poly([px, py - 9, px + 6, py - 7.5, px, py - 6]).fill(0xa8382b);
+  }
+  // The fire, flickering.
+  const fg = host.layer(cx + cy);
+  if (fg) {
+    const p = isoToScreen(cx, cy, host.ground(cx, cy));
+    const flick = 1 + Math.sin(t * 9) * 0.15 + Math.sin(t * 13.7) * 0.1;
+    fg.ellipse(p.sx, p.sy, 7, 3).fill({ color: 0x3a2a1a, alpha: 0.8 });
+    fg.poly([p.sx - 4, p.sy, p.sx, p.sy - 10 * flick, p.sx + 4, p.sy]).fill({ color: 0xf08a2a, alpha: 0.9 });
+    fg.poly([p.sx - 2, p.sy, p.sx, p.sy - 6 * flick, p.sx + 2, p.sy]).fill({ color: 0xffd36a, alpha: 0.95 });
+  }
+  // A few of them about the fire.
+  const n = Math.min(8, s.raiders);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + 0.3;
+    const x = cx + Math.cos(a) * 0.75;
+    const y = cy + Math.sin(a) * 0.75;
+    const g = host.layer(Math.round(x) + Math.round(y));
+    if (!g) continue;
+    const p = isoToScreen(x, y, host.ground(x, y));
+    drawSoldier(g, p.sx, p.sy, i % 4 === 3 ? 'raiderArcher' : 'raider', 'stand', t + i * 0.7, 1, false, Math.cos(a) > 0);
+  }
+}
+
+const BRIDGE_WOOD = 0x7d5b37;
+const BRIDGE_INK = 0x3a2816;
+
+/**
+ * Drawbridges over the moat at a finished gatehouse's passage: lowered in peacetime and while your
+ * soldiers cross, raised against the gate (covering the arch) through a battle, gone once battered down.
+ */
+function drawDrawbridges(host: ActorHost, sim: SimState, b: BattleState | null): void {
+  for (const piece of sim.plan.pieces) {
+    if (piece.kind !== 'gatehouse') continue;
+    const pc = b?.pieces[piece.id];
+    let ends: [number, number][];
+    if (pc) {
+      if (!pc.standing || (pc.bridge ?? 0) <= 0) continue;
+      ends = (pc.bridgeTiles ?? []).map((i) => [i % sim.map.width, Math.floor(i / sim.map.width)]);
+    } else {
+      if (pieceProgress(sim.map, sim.works, piece) < 1) continue;
+      ends = bridgeEnds(sim.map, piece);
+    }
+    const down = !pc || (pc.openUntil ?? 0) > (b?.tick ?? 0);
+    const ground = heightAt(sim.map, piece.x, piece.y) + 0.06;
+    for (const [ex, ey] of ends) {
+      const g = host.layer(ex + ey);
+      if (!g) continue;
+      const dx = ex - piece.x;
+      const dy = ey - piece.y;
+      // A point at `along` tiles out from the passage centre, `across` to the side, at a level.
+      const at = (along: number, across: number, lv: number) => {
+        const p = isoToScreen(piece.x + dx * along + dy * across, piece.y + dy * along + dx * across, lv);
+        return [p.sx, p.sy] as [number, number];
+      };
+      const w = 0.21;
+      const face = 0.48;
+      const deck = down
+        ? [at(face, -w, ground), at(face, w, ground), at(1.42, w, ground), at(1.42, -w, ground)]
+        : [at(face + 0.02, -w, ground), at(face + 0.02, w, ground), at(face + 0.02, w, ground + 1.15), at(face + 0.02, -w, ground + 1.15)];
+      g.poly(deck.flat()).fill(down ? BRIDGE_WOOD : shade(BRIDGE_WOOD, 0.85)).stroke({ width: 1, color: BRIDGE_INK, alpha: 0.9 });
+      // Planks.
+      for (let k = 1; k < 5; k++) {
+        const u = k / 5;
+        const [a, c] = down ? [at(face + (1.42 - face) * u, -w, ground), at(face + (1.42 - face) * u, w, ground)] : [at(face + 0.02, -w, ground + 1.15 * u), at(face + 0.02, w, ground + 1.15 * u)];
+        g.moveTo(a[0], a[1]).lineTo(c[0], c[1]).stroke({ width: 0.8, color: BRIDGE_INK, alpha: 0.55 });
+      }
+      // Chains from high on the gate to the bridge's far end.
+      for (const side of [-w, w]) {
+        const [ax, ay] = at(face, side * 0.9, ground + 1.75);
+        const [bx, by] = down ? at(1.42, side, ground) : at(face + 0.02, side, ground + 1.15);
+        g.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 1, color: 0x2b2b2b, alpha: 0.85 });
+      }
     }
   }
 }

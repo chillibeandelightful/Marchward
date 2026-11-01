@@ -42,7 +42,19 @@ export const TOWER_HEIGHT: Record<HeightClass, { name: string; levels: number; t
   high: { name: 'High', levels: 4, timeMult: 2.2 },
 };
 
-export const GATEHOUSE = { name: 'Gatehouse', hp: 400, levels: 3, cost: { stone: 90, timber: 30, labour: 200 } };
+/**
+ * A gatehouse is three tiles wide across its passage (the arch, with a tower either side), passage
+ * one tile. Saves from before M6 part 2 keep their one-tile gatehouse as a narrow gate.
+ */
+export const GATEHOUSE = {
+  name: 'Gatehouse',
+  hp: 650,
+  levels: 3,
+  cost: { stone: 150, timber: 40, labour: 320 },
+  /** The flanking towers stand this many levels above the arch between them. */
+  flankLevels: 1,
+  narrow: { name: 'Narrow gatehouse', hp: 400, cost: { stone: 90, timber: 30, labour: 200 } },
+};
 
 /** The keep covers KEEP.size × KEEP.size tiles, all of which must be level. */
 export const KEEP = { name: 'Keep', hp: 700, levels: 5, size: 2, cost: { stone: 240, timber: 60, labour: 650 } };

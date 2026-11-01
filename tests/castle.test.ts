@@ -98,13 +98,15 @@ describe('placing pieces', () => {
     expect(checkPlacement(map, plan, [wall(4, 1), wall(4, 2)]).problem).not.toBeNull();
   });
 
-  it('allows one keep and one gatehouse, and needs level ground for the keep', () => {
+  it('allows one keep but more than one gatehouse, and needs level ground for the keep', () => {
     const map = flatMap(10);
     const plan = createPlan(map);
     expect(placePieces(map, plan, [{ kind: 'keep', x: 4, y: 4 }]).problem).toBeNull();
     expect(checkPlacement(map, plan, [{ kind: 'keep', x: 1, y: 1 }]).problem).toMatch(/only one keep/);
     placePieces(map, plan, [{ kind: 'gatehouse', x: 1, y: 8, axis: 'y' }]);
-    expect(checkPlacement(map, plan, [{ kind: 'gatehouse', x: 8, y: 1, axis: 'y' }]).problem).toMatch(/only one/);
+    placePieces(map, plan, line([2, 8], [6, 8]));
+    expect(placePieces(map, plan, [{ kind: 'gatehouse', x: 5, y: 8, axis: 'y' }]).problem).toBeNull();
+    expect(plan.pieces.filter((p) => p.kind === 'gatehouse')).toHaveLength(2);
 
     const sloped = flatMap(6);
     sloped.heights[2 * 6 + 3] = 2;
