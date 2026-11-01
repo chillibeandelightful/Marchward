@@ -5,5 +5,8 @@ export default defineConfig({
   base: './',
   test: {
     include: ['tests/**/*.test.ts'],
+    // Some balance tests fight several whole battles; on the slower CI runners they can take
+    // longer than the default 5 seconds.
+    testTimeout: 30000,
   },
 });
