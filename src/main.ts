@@ -223,6 +223,26 @@ async function start(): Promise<void> {
     tabs.pages.plan,
   );
 
+  /** A Commander battle is being fought (not still deploying). */
+  const commanding = () => {
+    const b = sim.defence.battle;
+    return !!b && !deploying(b) && b.phase === 'fight' && sim.defence.control === 'commander';
+  };
+  /**
+   * In a Commander battle: shown from above while paused (to pick soldiers and give orders) and in
+   * the normal view while it runs (to watch), unless the player switched with T or the button; that
+   * choice holds until the next pause or restart.
+   */
+  let viewChoice: boolean | null = null;
+  let viewPaused = true;
+  const commandView = (): boolean => {
+    const paused = speed === 0;
+    if (paused !== viewPaused) {
+      viewPaused = paused;
+      viewChoice = null;
+    }
+    return viewChoice ?? paused;
+  };
   const game: GameHost = {
     get sim() {
       return sim;
@@ -235,6 +255,12 @@ async function start(): Promise<void> {
     },
     setSpeed(s) {
       speed = s;
+    },
+    get battleView() {
+      return commanding() ? (commandView() ? 'command' : 'normal') : null;
+    },
+    toggleBattleView() {
+      if (commanding()) viewChoice = !commandView();
     },
     load(state) {
       sim = state;
@@ -422,7 +448,10 @@ async function start(): Promise<void> {
   });
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyV') forcePlanned = !forcePlanned;
-    else if (e.code === 'KeyT') topDownAllowed = !topDownAllowed;
+    else if (e.code === 'KeyT') {
+      if (commanding()) game.toggleBattleView();
+      else topDownAllowed = !topDownAllowed;
+    }
     else if (e.code === 'Backquote') tunePanel.toggle();
     else if (e.code === 'KeyH') applyLook({ ...look, view: VIEW_ORDER[(VIEW_ORDER.indexOf(look.view) + 1) % VIEW_ORDER.length] ?? 'standard' });
     else if (e.code === 'KeyK') applyLook({ ...look, contours: !look.contours });
@@ -564,7 +593,7 @@ async function start(): Promise<void> {
       if (last) reportView.show(last);
     }
 
-    setTopDown(topDownAllowed && wantsTopDown(designer.tool, battlePhase(), sim.defence.control === 'commander'));
+    setTopDown(commanding() ? commandView() : topDownAllowed && wantsTopDown(designer.tool, battlePhase()));
     // Pieces knocked down in a battle watched from above.
     const fallen = sim.defence.battle ? Object.values(sim.defence.battle.pieces).filter((p) => !p.standing).length : 0;
     if (fallen !== shownFallen) {

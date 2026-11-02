@@ -68,7 +68,9 @@
       #panel section + section { margin-top: 10px; padding-top: 8px; border-top: 1px solid #3a3f46; }
       #panel button { margin-top: 8px; }
       .alert { margin-top: 2px; font-weight: 600; }
-      .alert:empty { display: none; }
+      .alert:empty, .alert.idle { display: none; }
+      .alert .view-toggle { margin-left: 10px; font-weight: 600; }
+      .alert .view-toggle[hidden] { display: none; }
       #tune {
         position: fixed; bottom: 130px; left: 50%; transform: translateX(-50%); width: min(460px, calc(100% - 40px)); z-index: 6;
         padding: 10px 14px; font: 12px/1.5 system-ui, sans-serif; color: #e8e2d0;
