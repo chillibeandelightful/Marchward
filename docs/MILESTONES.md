@@ -191,6 +191,17 @@ Raiders come from any edge, and today you can't see what's going on behind the c
 - The sim doesn't change. Render flips the projection and depth order and draws the pieces' back faces (the gatehouse arch, keep turrets and so on need a far-side drawing); tile picking and the camera follow the active view. The top-down planning view is unaffected.
 - Suggested slot: M5b, which already moves the projection settings into one place, or straight after it. It would need M5b's "no camera rotation" line to allow two fixed views.
 
+### Siege tools and Commander feedback (playtest, 2026-11-02)
+Notes from playing M6. None is built yet.
+- **Moat tool in the top-down view.** Picking the moat tool switches to the top-down plan view, as placing walls and pieces already does, and back again when the tool is put down.
+- **Remove tool in the top-down view** too, for the same reason: pieces hidden behind taller ones are hard to pick in the isometric view.
+- **Drag to plan a moat line.** Press and hold to drag a line of planned moat tiles, the same way wall planning works, with the cost and spoil shown for the whole line before letting go.
+- **Commander mode in the top-down view.** Units behind walls and buildings can't be seen or picked in the isometric view, so Commander mode uses the top-down view (or at least offers it with one key).
+- **Raiders approach in rows, not a single file.** Today they come in a marching column. They should advance side by side in a rough line, in several rows when there are many. The number in each row varies (from the seeded RNG) so it doesn't look regimented, and the rows loosen up once they reach the walls.
+- **Undo a manual troop posting.** Once a soldier is placed by hand there's no way back. Add an undo for the last placement (a key and a button) and a "clear my postings" that hands everyone back to the automatic posts.
+- **Check: are sappers deploying?** The playtester hasn't seen a sapper's timber shelter yet. In the code they only come from the second raid (1 sapper, growing by half a sapper a raid), the shelter is drawn only while one is digging, and they won't dig at a piece with a moat or rock at its foot, so a moated castle never sees one. The report says which of these happened. To confirm in play: a second or later raid against a wall with no moat. If they still never show, it's a bug to chase.
+- Suggested slot: after M7, as a small UI and combat follow-up (`src/ui/`, the raid spawn in `src/sim/battle.ts`), unless the playtester wants it first.
+
 ## Progress log
 Update as milestones complete.
 
