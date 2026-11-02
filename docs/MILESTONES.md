@@ -361,3 +361,6 @@ Update as milestones complete.
 - Report: a line for raiders hurt (and drowned) crossing the moat, and one for bundles thrown and causeways made.
 - Saves are version 5; a battle saved mid-fight gets no bundle carriers.
 - Tests (`tests/moatCrossing.test.ts`): a wet moat hurts more than a dry one, and a ditch out in the field away from the castle hurts nobody; bundle carriers come from raid 3, all fill one tile into a causeway at the foot of the wall and then fight on, and fight like raiders with no moat; an old save mid-battle loads.
+
+### Playtest fix: Commander view for orders, normal view to watch (2026-11-02)
+- In a Commander battle the top-down view is now for picking soldiers and giving orders: it's used while the game is paused, and the normal view comes back while the battle runs, so it can be watched. A button in the top bar's battle line (**Watch the battle** / **Give orders from above**), or T, switches between them; the choice holds until the next pause or restart. Orders can be given in either view. Outside Commander battles T still turns the plan view off and on for the placing tools.

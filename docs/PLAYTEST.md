@@ -220,3 +220,6 @@ After each milestone, add a section:
 - **Bundle carriers:** use **Bring the next raid now** until it's raid 3 or later. The Defence tab lists bundle carriers among the raiders; they march behind the front row with a bundle on their backs. They head for the edge of your moat, throw their bundles into one tile, and two bundles make a causeway (a heap of brushwood in the water) that the others walk across without getting hurt. Shoot them or sally out before they get there. With no moat, they just fight like raiders.
 - **The questions:** does a moat now feel worth digging? Are bundle carriers a fair answer to it, or too quick (or too slow)?
 **Known issues:** causeways are gone after the battle. Arrows and bundles aren't shown in the top-down Commander view yet, only the causeways.
+
+## Playtest fix – Commander view for orders, normal view to watch (2026-11-02)
+**How to test:** in a Commander battle, pause (Space): the view goes top-down so you can pick anyone, even behind walls. Start it again: the normal view comes back to watch. The button at the end of the red battle line in the top bar (or T) switches either way.

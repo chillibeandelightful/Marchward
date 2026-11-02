@@ -15,6 +15,9 @@ export class TopBar {
   private readonly stores = el('div', 'stores');
   private readonly items: Record<string, HTMLSpanElement> = {};
   private readonly alert = el('div', 'alert');
+  private readonly alertText = el('span');
+  /** In a Commander battle: switch between giving orders from above and watching in the normal view. */
+  private readonly viewButton: HTMLButtonElement;
 
   constructor(
     root: HTMLElement,
@@ -33,6 +36,9 @@ export class TopBar {
       this.items[k] = span;
       this.stores.append(span);
     }
+    this.viewButton = button('', () => host.toggleBattleView());
+    this.viewButton.className = 'view-toggle';
+    this.alert.append(this.alertText, this.viewButton);
     root.replaceChildren(row, this.stores, this.alert);
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'Space' || e.target instanceof HTMLInputElement) return;
@@ -77,21 +83,24 @@ export class TopBar {
     if (b) {
       const c = battleCounts(b);
       setText(
-        this.alert,
-        `⚔ Raid ${b.raid}, ${Math.floor(battleSeconds(b))}s · raiders left ${c.attackers} · your soldiers ${c.defenders}${b.phase === 'retreat' ? ' · they are falling back' : ''}${speed === 0 ? (deploying(b) ? ' · post troops with tool 0, then press Space to fight' : ' · paused: press Space to fight') : ''}${def.control === 'commander' && !deploying(b) && b.phase === 'fight' ? ' · click or drag round your soldiers, then click where to go or a raider to attack' : ''}`,
+        this.alertText,
+        `⚔ Raid ${b.raid}, ${Math.floor(battleSeconds(b))}s · raiders left ${c.attackers} · your soldiers ${c.defenders}${b.phase === 'retreat' ? ' · they are falling back' : ''}${speed === 0 ? (deploying(b) ? ' · post troops with tool 0, then press Space to fight' : ' · paused: press Space to fight') : ''}${this.host.battleView === 'command' ? ' · click or drag round your soldiers, then click where to go or a raider to attack; U sends them back' : ''}`,
       );
       setClass(this.alert, 'alert bad');
     } else if (def.siege) {
       const s = def.siege;
-      setText(this.alert, `⛺ Besieged: ${s.raiders} raiders camped to the ${s.from} · their food: ${s.supplies > 0 ? `${s.supplies} days` : 'gone'} · their morale ${Math.max(0, Math.round(s.morale))}% · nothing can be bought`);
+      setText(this.alertText, `⛺ Besieged: ${s.raiders} raiders camped to the ${s.from} · their food: ${s.supplies > 0 ? `${s.supplies} days` : 'gone'} · their morale ${Math.max(0, Math.round(s.morale))}% · nothing can be bought`);
       setClass(this.alert, 'alert bad');
     } else if (def.raids && def.warned) {
-      setText(this.alert, `Raiders expected in ${def.nextRaid - day} days, from the ${def.from}. Post your soldiers with the Troops tool (0).`);
+      setText(this.alertText, `Raiders expected in ${def.nextRaid - day} days, from the ${def.from}. Post your soldiers with the Troops tool (0).`);
       setClass(this.alert, 'alert warn');
     } else {
-      setText(this.alert, '');
-      setClass(this.alert, 'alert');
+      setText(this.alertText, '');
+      setClass(this.alert, 'alert idle');
     }
+    const view = this.host.battleView;
+    this.viewButton.hidden = view === null;
+    setText(this.viewButton, view === 'command' ? '👁 Watch the battle (T)' : '⌖ Give orders from above (T)');
     this.item('efficiency', workers > 0 ? `Efficiency ${Math.round(efficiency(e) * 100)}%` : '', efficiency(e) < 0.8 ? 'bad' : '');
   }
 
