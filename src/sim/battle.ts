@@ -2,7 +2,7 @@ import { LADDER_REACH, WALL_THICKNESS } from '../data/castle';
 import { COMBAT, RAIDER_TYPES, RAIDS, SIEGE, TROOP_TYPES, UNITS, type RaiderType, type Side, type TroopType, type UnitType } from '../data/combat';
 import { simConfig } from '../data/config';
 import { TRADES } from '../data/economy';
-import { batterTaken, footprint, gateEnds, hasSlits, isMoatLike, pieceCost, pieceHp, pieceLevels, pieceName, rangeBonus, sapSeconds, type Piece, type PieceKind } from './castle';
+import { batterTaken, bridgeEnds, footprint, gateEnds, hasSlits, isMoatLike, pieceCost, pieceHp, pieceLevels, pieceName, rangeBonus, sapSeconds, type Piece, type PieceKind } from './castle';
 import { EDGES, describeStrength, raidStrength, type Edge } from './defence';
 import { distanceField, downhill, findPath, landCost, type StepCost } from './path';
 import { Rng } from './rng';
@@ -46,7 +46,12 @@ export interface Unit {
   sortie?: number;
   /** Swordsmen: ticks before they'll go out again after coming back in. */
   rest?: number;
+  /** Commander mode: the order this soldier is carrying out, if any. */
+  order?: Order | null;
 }
+
+/** An order given in Commander mode: go to a tile (onto a wall or tower, for archers), or go after one raider. */
+export type Order = { kind: 'move'; tile: number } | { kind: 'attack'; target: number };
 
 /** A castle piece as it stands in battle. */
 export interface PieceCombat {
@@ -88,6 +93,13 @@ export interface PieceCombat {
   cause?: 'batter' | 'sap';
   /** Gatehouse: drawn open until this tick, as soldiers go through. */
   openUntil?: number;
+  /** Gatehouse: the tile of its passage (the others of a wide gatehouse are its flanking towers). */
+  passage?: number;
+  /** Gatehouse: the tiles at either end of its passage. Battered from anywhere else (beside a flanking tower) it holds out twice as long. */
+  ends?: number[];
+  /** Gatehouse with a drawbridge: the moat tiles it spans, and its HP left (0 once battered down). */
+  bridgeTiles?: number[];
+  bridge?: number;
 }
 
 /** A ladder raised against a piece, from the tile at its foot. Kept after it is pushed away, for drawing. */
@@ -161,6 +173,8 @@ export interface SiegeStats {
   lobbed: number;
   /** Sappers killed while digging, and raiders killed up on your walls. */
   sappersKilled: number;
+  /** Drawbridges battered down (missing in older saves). */
+  bridgesBroken?: number;
 }
 
 /** A raid being fought. Plain data, so a battle can be saved and carried on. */
@@ -281,7 +295,12 @@ function breakInCost(map: TerrainMap, p: PieceCombat, from: number, have: { batt
   const fy = (from - fx) / map.width;
   const moat = isMoatLike(map, fx, fy);
   let best = Infinity;
-  if (have.batterers > 0) best = (COMBAT.batterCostPerHp * p.hp) / p.batterTaken;
+  if (have.batterers > 0) {
+    // A raised drawbridge has to come down first, battered from the moat at a slower rate.
+    const bridge = p.bridgeTiles?.includes(from) ? (p.bridge ?? 0) : 0;
+    const slow = (bridge > 0 ? SIEGE.drawbridge.batter : 1) * gateShare(p, from);
+    best = (COMBAT.batterCostPerHp * (p.hp / p.batterTaken + bridge)) / slow;
+  }
   // Walking a tile takes about 2.5 seconds, so seconds of work count as that many tiles.
   const secondsPerTile = 1 / UNITS.raider.speed;
   const need = p.sapNeed ?? null;
@@ -289,6 +308,11 @@ function breakInCost(map: TerrainMap, p: PieceCombat, from: number, have: { batt
     best = Math.min(best, (need - (p.sap ?? 0)) / Math.min(have.sappers, SIEGE.sap.perPiece) / secondsPerTile);
   if (have.ladders > 0 && !moat && canLadder(map, p, from)) best = Math.min(best, climb + SIEGE.ladder.raise / secondsPerTile);
   return Number.isFinite(best) ? best : null;
+}
+
+/** Battering a gatehouse anywhere but at its gate (beside a flanking tower, say) goes at this share of the usual rate. */
+function gateShare(p: PieceCombat, from: number): number {
+  return p.kind === 'gatehouse' && p.ends && !p.ends.includes(from) ? SIEGE.gateFlankBatter : 1;
 }
 
 /** Can a ladder from this tile reach the top of the piece? Not from a moat or water. */
@@ -312,6 +336,8 @@ function derive(map: TerrainMap, b: BattleState): Derived {
   const at = (i: number) => b.pieces[occupant[i] as number];
   const laddered = new Set((b.ladders ?? []).filter((l) => l.up && b.pieces[l.piece]?.standing).map((l) => l.piece));
   const have = strengthLeft(b);
+  const bridged = new Set<number>();
+  for (const p of Object.values(b.pieces)) if (p.standing && (p.bridge ?? 0) > 0) for (const t of p.bridgeTiles ?? []) bridged.add(t);
   const attackCost: StepCost = (i, j) => {
     const land = landCost(map, i, j);
     if (land === null) return null;
@@ -331,10 +357,12 @@ function derive(map: TerrainMap, b: BattleState): Derived {
   const defendCost: StepCost = (i, j) => {
     const land = landCost(map, i, j);
     if (land === null) return null;
+    // Across the moat on a drawbridge, lowered for them, as on dry land.
+    if (bridged.has(j) || bridged.has(i)) return 1;
     const p = at(j);
     if (!p) return land;
     if (!p.standing) return land * COMBAT.rubbleCost;
-    return p.kind === 'gatehouse' ? land : null;
+    return p.kind === 'gatehouse' && j === p.passage ? land : null;
   };
   // Outside: where the raiders can walk from where they are (or their edge, before they arrive)
   // without breaking in or climbing.
@@ -484,6 +512,18 @@ function combatPieces(s: SimState): Record<string, PieceCombat> {
       sapNeed: p.kind === 'keep' || footprint(p).some(([x, y]) => terrainAt(s.map, x, y).id === 'rock') ? null : sapSeconds(p) * Math.min(1, progress),
       sapFrom: null,
     };
+    if (p.kind === 'gatehouse') {
+      const pc = out[p.id] as PieceCombat;
+      pc.passage = p.y * s.map.width + p.x;
+      pc.ends = gateEnds(p)
+        .filter(([x, y]) => inBounds(s.map, x, y))
+        .map(([x, y]) => y * s.map.width + x);
+      const ends = complete ? bridgeEnds(s.map, p) : [];
+      if (ends.length > 0) {
+        pc.bridgeTiles = ends.map(([x, y]) => y * s.map.width + x);
+        pc.bridge = SIEGE.drawbridge.hp;
+      }
+    }
   }
   return out;
 }
@@ -733,7 +773,10 @@ function placeDefenders(s: SimState, b: BattleState, rng: Rng, der: Derived, ex:
 
   // Swordsmen stand round whatever the raiders are making for, then hold the inside of the gate.
   const spots: number[] = [...b.targetTiles];
-  const gate = s.plan.pieces.find((p) => p.kind === 'gatehouse' && b.pieces[p.id]?.standing);
+  // With more than one gate, the one nearest where the raiders gathered.
+  const gate = s.plan.pieces
+    .filter((p) => p.kind === 'gatehouse' && b.pieces[p.id]?.standing)
+    .sort((a, c) => Math.hypot(a.x - ex, a.y - ey) - Math.hypot(c.x - ex, c.y - ey) || a.id - c.id)[0];
   if (gate && gate.kind === 'gatehouse') {
     const ends = gateEnds(gate)
       .filter(([x, y]) => inBounds(map, x, y))
@@ -753,6 +796,36 @@ function placeDefenders(s: SimState, b: BattleState, rng: Rng, der: Derived, ex:
   for (const type of ['swordsman', 'archer'] as const)
     for (let round = 0; left[type] > 0 && round < COMBAT.postCapacity.ground; round++)
       for (const t of tiles) if (left[type] > 0) place(type, t % map.width, Math.floor(t / map.width));
+}
+
+/**
+ * Commander mode: give an order to some of your soldiers. Swordsmen fight on the ground, so they
+ * can't be sent onto a piece; archers can. Returns how many took the order.
+ */
+export function orderUnits(s: SimState, ids: readonly number[], order: Order): number {
+  const b = s.defence.battle;
+  if (!b || b.phase !== 'fight') return 0;
+  const { map } = s;
+  const der = derive(map, b);
+  let taken = 0;
+  for (const u of b.units) {
+    if (u.side !== 'defender' || u.hp <= 0 || !ids.includes(u.id)) continue;
+    if (order.kind === 'attack') {
+      const foe = b.units.find((f) => f.id === order.target && f.side === 'attacker' && f.hp > 0);
+      if (!foe) continue;
+    } else {
+      if (order.tile < 0 || order.tile >= map.width * map.height) continue;
+      const p = b.pieces[der.occupant[order.tile] as number];
+      if (p?.standing && !UNITS[u.type].bow) continue;
+      if (!p?.standing && terrainAt(map, order.tile % map.width, Math.floor(order.tile / map.width)).moveCost === null) continue;
+    }
+    u.order = { ...order };
+    u.path = [];
+    u.retry = 0;
+    u.sortie = 0;
+    taken++;
+  }
+  return taken;
 }
 
 /**
@@ -889,6 +962,9 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
   }
 
   const pieceAt = (i: number) => b.pieces[der.occupant[i] as number];
+  /** The gatehouse whose drawbridge spans a moat tile. */
+  const bridgeOver = new Map<number, PieceCombat>();
+  for (const p of Object.values(b.pieces)) for (const t of p.bridgeTiles ?? []) bridgeOver.set(t, p);
 
   /**
    * Can a unit shoot at another? Clear, or only by lobbing over a piece in the way (less accurate),
@@ -933,8 +1009,9 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     u.act = 'walk';
     u.work = 0;
     const p = pieceAt(to);
-    // Through the gatehouse: the gate is drawn open behind them for a moment.
-    if (u.side === 'defender' && p?.standing && p.kind === 'gatehouse') p.openUntil = b.tick + Math.round(SIEGE.sortie.gateOpen * simConfig.ticksPerSecond);
+    // Through the gatehouse (or over its drawbridge): the gate is drawn open behind them for a moment.
+    const gate = p?.kind === 'gatehouse' ? p : u.side === 'defender' ? bridgeOver.get(to) : undefined;
+    if (u.side === 'defender' && gate?.standing) gate.openUntil = b.tick + Math.round(SIEGE.sortie.gateOpen * simConfig.ticksPerSecond);
     if (u.side === 'attacker' && to !== from) {
       if (p && !p.standing && p.breachedAt === null && !b.stats.gaps.includes(to)) b.stats.gaps.push(to);
       // Up a ladder onto the wall, or down off it.
@@ -1057,6 +1134,7 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
           continue;
         }
       }
+      if (u.order && obey(u, here)) continue;
       if (UNITS[u.type].bow) {
         // Shoot first at raider archers who can shoot back, then at whoever is nearest.
         const foe =
@@ -1180,6 +1258,132 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     }
     const next = downhill(map, der.attack, here, der.attackCost);
     if (next !== null) advance(u, next);
+  }
+
+  /**
+   * Commander mode: carry out an order. Returns false when the soldier should act as usual this
+   * tick (an archer with nobody to shoot at, say), true when the order kept it busy.
+   */
+  function obey(u: Unit, here: number): boolean {
+    const bs = b as BattleState;
+    const order = u.order as Order;
+    if (order.kind === 'attack') {
+      const foe = bs.units.find((f) => f.id === order.target && f.hp > 0);
+      if (!foe) {
+        u.order = null;
+        u.post = u.on ? u.post : here;
+        return false;
+      }
+      const d = Math.hypot(foe.x - u.x, foe.y - u.y);
+      if (UNITS[u.type].bow && canShoot(u, foe, d)) {
+        shoot(u, foe);
+        return true;
+      }
+      if (!UNITS[u.type].bow && d <= COMBAT.meleeReach && (!foe.on || foe.on === u.on)) {
+        strike(u, foe);
+        return true;
+      }
+      // Archers up on a piece stay there and shoot at whoever they can meanwhile.
+      if (u.on) return false;
+      return walkTo(u, here, tileOf(map, foe.x, foe.y), foe.x, foe.y);
+    }
+    const goal = order.tile;
+    const target = pieceAt(goal);
+    const onto = target?.standing ? target : undefined;
+    // Down off the piece first, unless it's along the same piece.
+    if (u.on && (!onto || onto.id !== u.on)) {
+      const p = bs.pieces[u.on] as PieceCombat;
+      const down = stepDown(p, goal);
+      if (down === null) {
+        u.order = null;
+        return false;
+      }
+      u.on = 0;
+      u.x = (down % map.width) + u.ox * 0.5;
+      u.y = Math.floor(down / map.width) + u.oy * 0.5;
+      u.post = down;
+      u.act = 'walk';
+      return true;
+    }
+    if (onto && u.on === onto.id) {
+      // Along the same piece to another of its tiles.
+      u.post = goal;
+      u.order = null;
+      return false;
+    }
+    if (onto) {
+      // Up onto a wall or tower from a tile beside it, if there's room.
+      if (onto.tiles.some((t) => edgeNeighbours(map, t, here))) {
+        u.order = null;
+        if (bs.units.filter((o) => o.on === onto.id && o.hp > 0).length >= COMBAT.postCapacity[onto.kind]) {
+          u.post = here;
+          return false;
+        }
+        u.on = onto.id;
+        u.post = goal;
+        u.x = goal % map.width;
+        u.y = Math.floor(goal / map.width);
+        u.act = 'walk';
+        return true;
+      }
+      const beside = (i: number) => onto.tiles.some((t) => edgeNeighbours(map, t, i)) && !pieceAt(i)?.standing;
+      if (u.retry <= 0 || u.path[0] !== here || !beside(u.path[u.path.length - 1] ?? -1)) {
+        u.path = findPath(map, here, beside, [goal % map.width, Math.floor(goal / map.width)], der.defendCost, 400) ?? [];
+        u.retry = 15;
+        if (u.path.length === 0) {
+          u.order = null;
+          return false;
+        }
+      } else u.retry--;
+      return followPath(u);
+    }
+    if (here === goal) {
+      u.order = null;
+      u.post = goal;
+      return false;
+    }
+    return walkTo(u, here, goal, goal % map.width + u.ox, Math.floor(goal / map.width) + u.oy);
+  }
+
+  /** Walk towards a tile (or a point on it), finding the way round walls every so often. False if there's no way. */
+  function walkTo(u: Unit, here: number, there: number, x: number, y: number): boolean {
+    if (there === here || (Math.hypot(x - u.x, y - u.y) < 3 && clearWalk(map, here, there, der.defendCost))) {
+      move(u, x, y, der.defendCost);
+      return true;
+    }
+    if (u.retry <= 0 || u.path[0] !== here || u.path[u.path.length - 1] !== there) {
+      u.path = findPath(map, here, (i) => i === there, [there % map.width, Math.floor(there / map.width)], der.defendCost, 400) ?? [];
+      u.retry = 15;
+      if (u.path.length === 0) {
+        u.order = null;
+        return false;
+      }
+    } else u.retry--;
+    return followPath(u);
+  }
+
+  function followPath(u: Unit): boolean {
+    const step = u.path[1];
+    if (step === undefined) return true;
+    move(u, (step % map.width) + u.ox, Math.floor(step / map.width) + u.oy, der.defendCost);
+    if (tileOf(map, u.x, u.y) === step) u.path.shift();
+    return true;
+  }
+
+  /** The tile beside a piece to climb down to: open ground inside the walls if there is any, nearest the goal. */
+  function stepDown(p: PieceCombat, goal: number): number | null {
+    let best: number | null = null;
+    let bestScore = Infinity;
+    for (const t of p.tiles)
+      for (const n of edgeTiles4(map, t)) {
+        if (pieceAt(n)?.standing || terrainAt(map, n % map.width, Math.floor(n / map.width)).moveCost === null) continue;
+        const score = (der.outside[n] ? 100 : 0) + Math.hypot((n % map.width) - (goal % map.width), Math.floor(n / map.width) - Math.floor(goal / map.width));
+        if (score < bestScore) {
+          bestScore = score;
+          best = n;
+        }
+      }
+    return best;
   }
 
   /**
@@ -1343,6 +1547,10 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     u.act = 'walk';
   }
 
+  function bs(): BattleState {
+    return b as BattleState;
+  }
+
   /** Walk on to the next tile, climb over it by ladder, or batter the piece standing in it. */
   function advance(u: Unit, next: number): void {
     const p = pieceAt(next);
@@ -1354,7 +1562,18 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
       batterers.set(p.id, at);
       u.act = 'batter';
       p.batterFrom ??= seconds;
-      p.hp -= UNITS[u.type].batter * DT * p.batterTaken;
+      const from = tileOf(map, u.x, u.y);
+      if ((p.bridge ?? 0) > 0 && p.bridgeTiles?.includes(from)) {
+        // The raised drawbridge takes the blows first, swung at from down in the moat.
+        p.bridge = Math.max(0, (p.bridge ?? 0) - UNITS[u.type].batter * DT * SIEGE.drawbridge.batter);
+        if (p.bridge <= 0) {
+          (bs().stats.siege as SiegeStats).bridgesBroken = ((bs().stats.siege as SiegeStats).bridgesBroken ?? 0) + 1;
+          bs().version++;
+          der = derive(map, bs());
+        }
+        return;
+      }
+      p.hp -= UNITS[u.type].batter * DT * p.batterTaken * gateShare(p, from);
       if (p.hp <= 0) {
         breach(p, 'batter');
         der = derive(map, b as BattleState);

@@ -106,7 +106,8 @@ export class CameraInput {
     this.camera.zoomAt(factor, x, y, this.el.clientWidth, this.el.clientHeight);
   }
 
-  private local(e: MouseEvent): { x: number; y: number } {
+  /** A mouse event's position over the canvas. */
+  local(e: MouseEvent): { x: number; y: number } {
     const r = this.el.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   }

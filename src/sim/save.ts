@@ -7,7 +7,7 @@ import type { SimState } from './state';
 import { createWorks } from './works';
 
 /** Bump when the shape of SimState changes, and add a step to MIGRATIONS that upgrades the old shape. */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export interface SaveFile {
   version: number;
@@ -47,6 +47,11 @@ const MIGRATIONS: Record<number, (state: Record<string, unknown>) => Record<stri
   2: (s) => {
     const plan = s.plan as Record<string, unknown>;
     return { ...s, plan: { ...plan, moats: plan.moats ?? [] } };
+  },
+  // Version 4 (M6 part 2): sieges and the control mode. One-tile gatehouses stay as narrow gates.
+  3: (s) => {
+    const defence = s.defence as Record<string, unknown>;
+    return { ...s, defence: { ...defence, siege: defence.siege ?? null, control: defence.control ?? 'classic' } };
   },
 };
 

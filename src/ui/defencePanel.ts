@@ -1,10 +1,12 @@
-import { RAIDS, TROOP_TYPES, TROOPS, UNITS, type TroopType } from '../data/combat';
+import { RAIDS, SIEGE, TROOP_TYPES, TROOPS, UNITS, type TroopType } from '../data/combat';
 import { WAGE_LEVELS } from '../data/economy';
 import { battleCounts, battleSeconds, deploying, redeploy, type BattleReport } from '../sim/battle';
 import { formatDate } from '../sim/calendar';
 import { describeStrength, postCounts, raidStrength } from '../sim/defence';
-import { setTroopsWanted } from '../sim/economy';
-import { today } from '../sim/state';
+import { Rng } from '../sim/rng';
+import { bribeCost, buyOffSiege, isSiegeRaid, siegeSupplies } from '../sim/siege';
+import { addLog, today } from '../sim/state';
+import { mouths, setTroopsWanted } from '../sim/economy';
 import { button, el, setClass, setText } from './dom';
 import type { GameHost } from './host';
 
@@ -27,6 +29,9 @@ export class DefencePanel {
   private readonly raidsOn = el('input');
   private readonly past = el('div');
   private readonly raidButton: HTMLButtonElement;
+  private readonly bribeButton: HTMLButtonElement;
+  private bribeArmed = false;
+  private readonly control = {} as Record<'classic' | 'commander', HTMLInputElement>;
   private raidArmed = false;
   private pastKey = '';
 
@@ -36,7 +41,43 @@ export class DefencePanel {
     private readonly defence: DefenceHost,
   ) {
     const outlook = el('section');
-    outlook.append(el('strong', undefined, 'Raids'), this.status, this.statusDetail);
+    this.bribeButton = button('', () => {
+      const s = host.sim.defence.siege;
+      if (!s) return;
+      if (!this.bribeArmed) {
+        this.bribeArmed = true;
+        setText(this.bribeButton, `Click again: pay ${bribeCost(s)} crowns`);
+        return;
+      }
+      this.bribeArmed = false;
+      const rng = new Rng(host.sim.rngState);
+      const r = buyOffSiege(host.sim, rng, today(host.sim));
+      host.sim.rngState = rng.getState();
+      if (r.problem) setText(this.statusDetail, r.problem);
+      if (r.report) {
+        addLog(host.sim, r.report.headline);
+        defence.showReport(r.report);
+      }
+    });
+    outlook.append(el('strong', undefined, 'Raids'), this.status, this.statusDetail, this.bribeButton);
+
+    const command = el('section');
+    command.append(el('strong', undefined, 'Command in battle'));
+    for (const [mode, text] of [
+      ['classic', 'Classic: post your troops beforehand; in battle they act alone.'],
+      ['commander', 'Commander: also give orders in battle. Click your soldiers (or drag round several), then click the ground to move them (archers can go up onto a wall or tower) or a raider to attack it. The right button pans; Space pauses.'],
+    ] as const) {
+      const input = el('input');
+      input.type = 'radio';
+      input.name = 'control-mode';
+      input.addEventListener('change', () => {
+        if (input.checked) host.sim.defence.control = mode;
+      });
+      this.control[mode] = input;
+      const label = el('label', 'levy');
+      label.append(input, ` ${text}`);
+      command.append(label);
+    }
 
     const garrison = el('section');
     garrison.append(el('strong', undefined, 'Garrison'), el('div', 'dim', 'Set how many soldiers you want; they arrive over a few days.'));
@@ -83,7 +124,7 @@ export class DefencePanel {
 
     const history = el('section');
     history.append(el('strong', undefined, 'Past battles'), this.past);
-    root.replaceChildren(outlook, garrison, posts, testing, history);
+    root.replaceChildren(outlook, command, garrison, posts, testing, history);
   }
 
   update(): void {
@@ -103,6 +144,15 @@ export class DefencePanel {
         this.statusDetail,
         `Raiders left: ${c.raider} ${UNITS.raider.plural.toLowerCase()}, ${c.raiderArcher} archers${c.sapper > 0 ? `, ${c.sapper} ${(c.sapper === 1 ? UNITS.sapper.name : UNITS.sapper.plural).toLowerCase()}` : ''}${c.ladderCrew > 0 ? `, ${c.ladderCrew} ${(c.ladderCrew === 1 ? UNITS.ladderCrew.name : UNITS.ladderCrew.plural).toLowerCase()}` : ''}. Your soldiers: ${c.swordsman} swordsmen, ${c.archer} archers.${(b.ladders ?? []).some((l) => l.up) ? ' Ladders are up against your walls!' : ''}${b.phase === 'retreat' ? ' The raiders are falling back.' : ''}`,
       );
+    } else if (d.siege) {
+      const s = d.siege;
+      const food = Math.round(e.stores.food);
+      setText(this.status, `Besieged: ${s.raiders} raiders are camped to the ${s.from}. Day ${day - s.day} of the siege.`);
+      setClass(this.status, 'bad');
+      setText(
+        this.statusDetail,
+        `They have ${s.supplies > 0 ? `about ${s.supplies} days of food left` : 'run out of food'}, and their morale is ${Math.max(0, Math.round(s.morale))}%. Your stores: ${food} rations, about ${Math.floor(food / Math.max(1, mouths(e)))} days.${s.hungryDays > 0 ? ` Your stores are empty: ${Math.max(0, SIEGE.blockade.starveDays - s.hungryDays)} days before you must yield.` : ''} Nothing can be bought, and nobody new arrives, until they go.`,
+      );
     } else if (!d.raids) {
       setText(this.status, 'Raids are off.');
       setClass(this.status, 'dim');
@@ -110,7 +160,11 @@ export class DefencePanel {
     } else if (d.warned) {
       setText(this.status, `Raiders expected about ${formatDate(d.nextRaid)} (in ${d.nextRaid - day} days), from the ${d.from}.`);
       setClass(this.status, 'warn');
-      setText(this.statusDetail, `Scouts count ${describeStrength(raidStrength(d.raidCount + 1))}.`);
+      const n = d.raidCount + 1;
+      setText(
+        this.statusDetail,
+        `Scouts count ${describeStrength(raidStrength(n))}.${isSiegeRaid(n) ? ` They bring a siege train with about ${siegeSupplies(n)} days of food: if they can't break in, they will camp outside and try to starve you out. Lay in food while you can.` : ''}`,
+      );
     } else {
       setText(this.status, 'No raiders sighted.');
       setClass(this.status, '');
@@ -131,7 +185,13 @@ export class DefencePanel {
     const pc = postCounts(e, d);
     setText(this.posts, TROOP_TYPES.map((t) => `${UNITS[t].plural}: ${pc[t].posted} posted, ${pc[t].have} in the garrison`).join(' · '));
     this.raidsOn.checked = d.raids;
-    this.raidButton.disabled = !!b;
+    this.raidButton.disabled = !!b || !!d.siege;
+    this.bribeButton.hidden = !d.siege;
+    if (d.siege && !this.bribeArmed) setText(this.bribeButton, `Pay them to leave (${bribeCost(d.siege)} crowns)`);
+    if (!d.siege) this.bribeArmed = false;
+    const mode = d.control ?? 'classic';
+    this.control.classic.checked = mode === 'classic';
+    this.control.commander.checked = mode === 'commander';
 
     const key = JSON.stringify(d.reports.map((r) => [r.raid, r.day]));
     if (key !== this.pastKey) {

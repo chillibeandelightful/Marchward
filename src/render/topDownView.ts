@@ -88,7 +88,7 @@ export class TopDownView {
     const g = this.pieces.clear();
     const { stone, planned } = style().castle;
     const problem = tinted(stone, BAD_TINT, 0.45);
-    const curtain = new Set(view.plan.pieces.filter((p) => isCurtain(p.kind)).map((p) => `${p.x},${p.y}`));
+    const curtain = new Set(view.plan.pieces.filter((p) => isCurtain(p.kind)).flatMap((p) => footprint(p).map(([x, y]) => `${x},${y}`)));
     this.curtain = curtain;
     for (const p of view.plan.pieces) {
       if (rubble(p)) {
@@ -112,7 +112,7 @@ export class TopDownView {
     g.rect((cx - 1) * T, (cy - 1) * T, 3 * T, 3 * T).stroke({ width: 2, color: CAMP, alpha: 0.9 });
 
     if (o.ghosts) {
-      const curtain = new Set([...this.curtain, ...o.ghosts.specs.filter((s) => isCurtain(s.kind)).map((s) => `${s.x},${s.y}`)]);
+      const curtain = new Set([...this.curtain, ...o.ghosts.specs.filter((s) => isCurtain(s.kind)).flatMap((s) => footprint(s).map(([x, y]) => `${x},${y}`))]);
       const ok = tinted(castle.stone, GOOD_TINT, 0.35);
       const bad = tinted(castle.stone, BAD_TINT, 0.55);
       o.ghosts.specs.forEach((s, i) => drawPiece(g, map, curtain, s, o.ghosts?.problems[i] ? bad : ok, 1, 0.8));
@@ -203,6 +203,11 @@ function drawPiece(g: Graphics, map: TerrainMap, curtain: ReadonlySet<string>, p
     case 'gatehouse': {
       const m = mid(0.9);
       g.rect(x0 + m, y0 + m, T - 2 * m, T - 2 * m).fill(fill).stroke(line);
+      if (p.wide) {
+        // A tower either side of the passage.
+        const [dx, dy] = p.axis === 'x' ? [0, T] : [T, 0];
+        for (const k of [-1, 1]) g.rect(x0 + k * dx + m, y0 + k * dy + m, T - 2 * m, T - 2 * m).fill(fill).stroke(line);
+      }
       // The passage through it.
       const pw = T * 0.22;
       if (p.axis === 'x') g.rect(x0, y0 + T / 2 - pw / 2, T, pw);

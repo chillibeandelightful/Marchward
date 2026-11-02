@@ -63,6 +63,11 @@ export function foundationOutline(p: PieceSpec, joined: (x: number, y: number) =
     case 'gatehouse': {
       const h = GATEHOUSE_HALF;
       square(x - h, y - h, x + h, y + h);
+      // A wide gatehouse: a tower's footing either side of the passage.
+      if (p.wide) {
+        const [dx, dy] = p.axis === 'x' ? [0, 1] : [1, 0];
+        for (const k of [-1, 1]) square(x + k * dx - h, y + k * dy - h, x + k * dx + h, y + k * dy + h);
+      }
       // The passage through it.
       const w = 0.12;
       if (p.axis === 'x') segments.push([x - h, y - w, x + h, y - w], [x - h, y + w, x + h, y + w]);

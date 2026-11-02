@@ -4,6 +4,7 @@ import type { BattleReport, BattleState } from './battle';
 import { footprint, type CastlePlan, type Piece, type PieceKind } from './castle';
 import type { EconomyState } from './economy';
 import type { Rng } from './rng';
+import type { SiegeState } from './siege';
 import { inBounds, terrainAt, type TerrainMap } from './terrain';
 
 /** A map edge raiders can come from, named by where it lies on screen. */
@@ -32,6 +33,10 @@ export interface DefenceState {
   warned: boolean;
   posts: Post[];
   battle: BattleState | null;
+  /** Raiders camped round the castle, starving it out (missing in saves from before M6 part 2). */
+  siege?: SiegeState | null;
+  /** How you command in battle: Classic (troops act alone) or Commander (move and target orders). Missing means Classic. */
+  control?: 'classic' | 'commander';
   /** The most recent battle reports, newest last. */
   reports: BattleReport[];
 }
