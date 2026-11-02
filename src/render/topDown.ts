@@ -8,16 +8,18 @@ import { viewAngle } from './iso';
 /** Size of one tile in the top-down view, in world pixels: as wide as an isometric tile, so switching keeps the scale. Tile (x, y) covers [x, x+1) × [y, y+1) times this. */
 export const PLAN_TILE = 64;
 
-/** Tools that place castle pieces or troops: the ones the top-down view is for. */
-const PLACING = new Set(['wall', 'tower', 'gatehouse', 'keep']);
+/** Tools that place, dig or take off castle pieces: the ones the top-down view is for, so nothing tall hides the tile meant. */
+const PLACING = new Set(['wall', 'tower', 'gatehouse', 'keep', 'moat', 'remove']);
 
 /**
- * Should the top-down view be shown? While placing pieces outside a battle, and while posting
- * troops before the fight starts (including the pause after raiders arrive). Never once the
- * fighting has begun, so the battle is always watched in the normal view.
+ * Should the top-down view be shown? While placing, digging a moat or removing outside a battle,
+ * and while posting troops before the fight starts (including the pause after raiders arrive).
+ * Once the fighting has begun, only in Commander mode, so soldiers behind walls can be seen and
+ * picked; in Classic control the battle is watched in the normal view.
  */
-export function wantsTopDown(tool: string, battle: 'deploy' | 'fight' | null): boolean {
-  if (tool === 'troops') return battle !== 'fight';
+export function wantsTopDown(tool: string, battle: 'deploy' | 'fight' | null, commanding = false): boolean {
+  if (battle === 'fight') return commanding;
+  if (tool === 'troops') return true;
   return PLACING.has(tool) && battle === null;
 }
 

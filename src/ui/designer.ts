@@ -14,6 +14,7 @@ import {
   fitExtras,
   isCurtain,
   markMoat,
+  moatProblem,
   pieceAt,
   pieceCost,
   pieceStats,
@@ -63,7 +64,7 @@ const TOOLS: readonly { id: ToolId; name: string; key: string; help: string }[] 
     id: 'moat',
     name: 'Moat',
     key: 'm',
-    help: 'Click or drag to dig a moat a level down; click a planned moat again to take it off. Next to water at its level it fills; otherwise it is a dry ditch. Sappers and ladder crews can\'t work from a moat. Not in rock.',
+    help: 'Drag from one tile to another to plan a line of moat, like laying a wall; click a planned moat again to take it off. A moat is dug a level down. Next to water at its level it fills; otherwise it is a dry ditch. Sappers and ladder crews can\'t work from a moat. Not in rock.',
   },
   { id: 'remove', name: 'Remove', key: '8', help: 'Click or drag to remove pieces and earthwork marks.' },
   {
@@ -76,7 +77,7 @@ const TOOLS: readonly { id: ToolId; name: string; key: string; help: string }[] 
     id: 'troops',
     name: 'Troops',
     key: '0',
-    help: 'Click to post a soldier: archers on walls and towers (or the ground), swordsmen on the ground. Shift-click takes one off. Anyone without a post is placed for you when raiders come.',
+    help: 'Click to post a soldier: archers on walls and towers (or the ground), swordsmen on the ground. Shift-click takes one off; U (or Ctrl+Z) takes back the last one. Anyone without a post is placed for you when raiders come.',
   },
 ];
 
@@ -144,6 +145,7 @@ export class Designer {
     window.addEventListener('keydown', (e) => {
       const tool = TOOLS.find((t) => t.key === e.key);
       if (tool) this.setTool(tool.id);
+      else if (this.tool === 'troops' && (e.code === 'KeyU' || (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)))) this.undoPost();
       else if (e.code === 'KeyR') this.turnGate = !this.turnGate;
       else if (e.code === 'Escape') {
         if (this.dragFrom) this.dragFrom = null;
@@ -196,6 +198,7 @@ export class Designer {
         this.paint(tile);
         break;
       case 'wall':
+      case 'moat':
         this.dragFrom = tile;
         break;
       case 'tower':
@@ -205,7 +208,6 @@ export class Designer {
         break;
       case 'raise':
       case 'lower':
-      case 'moat':
       case 'remove':
         this.painting = true;
         this.painted.clear();
@@ -219,6 +221,10 @@ export class Designer {
   release(): void {
     if (this.tool === 'wall' && this.dragFrom) {
       this.place();
+      this.dragFrom = null;
+    }
+    if (this.tool === 'moat' && this.dragFrom) {
+      this.digMoat(this.dragFrom);
       this.dragFrom = null;
     }
     this.painting = false;
@@ -304,6 +310,75 @@ export class Designer {
     this.changed([]);
   }
 
+  /** The line of moat being dragged out (or the one tile under the pointer): each tile, and whether it can be dug. */
+  moatLine(): { x: number; y: number; ok: boolean; problem: string | null }[] | null {
+    const h = this.hover;
+    if (this.tool !== 'moat' || !h) return null;
+    const { base, plan } = this.host;
+    const from = this.dragFrom ?? h;
+    const out: { x: number; y: number; ok: boolean; problem: string | null }[] = [];
+    walkLine([from.x, from.y], [h.x, h.y], (x, y) => {
+      const problem = moatProblem(base, plan, x, y);
+      // Running along a moat already planned just joins it.
+      const planned = (plan.moats ?? []).includes(y * base.width + x);
+      out.push({ x, y, ok: problem === null || planned, problem: planned ? null : problem });
+    });
+    return out;
+  }
+
+  /** Let go of a moat drag: plan the line, or (a click on a planned moat) take that tile off. */
+  private digMoat(from: Tile): void {
+    const h = this.hover ?? from;
+    const { base, plan } = this.host;
+    if (from.x === h.x && from.y === h.y && unmarkMoat(base, plan, h.x, h.y)) {
+      this.notice = { text: 'Moat taken off', bad: false };
+      this.changed([h]);
+      return;
+    }
+    const line = this.moatLine() ?? [];
+    const dug: Tile[] = [];
+    let firstProblem: string | null = null;
+    for (const t of line) {
+      if ((plan.moats ?? []).includes(t.y * base.width + t.x)) continue;
+      const problem = markMoat(base, plan, t.x, t.y);
+      if (problem) firstProblem ??= problem;
+      else dug.push({ x: t.x, y: t.y });
+    }
+    const skipped = line.filter((t) => !t.ok).length;
+    if (dug.length === 0) this.notice = firstProblem ? { text: firstProblem, bad: true } : null;
+    else {
+      this.notice = {
+        text: `Moat planned on ${dug.length} ${dug.length === 1 ? 'tile' : 'tiles'}${skipped > 0 ? ` (${skipped} skipped: ${firstProblem?.toLowerCase() ?? 'can\'t be dug'})` : ''}`,
+        bad: false,
+      };
+      this.changed(dug);
+    }
+  }
+
+  /** Take back the last soldier posted by hand. */
+  undoPost(): void {
+    const { sim } = this.host;
+    if (this.host.locked() === 'fight') return;
+    const last = sim.defence.posts.pop();
+    if (!last) {
+      this.notice = { text: 'No posts to take back', bad: true };
+      return;
+    }
+    this.notice = { text: `Took back the ${UNITS[last.type].name.toLowerCase()} posted at ${last.x}, ${last.y}`, bad: false };
+    redeploy(sim);
+    this.renderTools();
+  }
+
+  /** Take every post off: everyone is placed for you when raiders come. */
+  clearPosts(): void {
+    const { sim } = this.host;
+    if (this.host.locked() === 'fight') return;
+    sim.defence.posts = [];
+    this.notice = { text: 'All posts taken off: everyone will be placed for you', bad: false };
+    redeploy(sim);
+    this.renderTools();
+  }
+
   private paint(tile: Tile): void {
     const key = `${tile.x},${tile.y}`;
     if (this.painted.has(key) || !inBounds(this.host.base, tile.x, tile.y)) return;
@@ -325,22 +400,6 @@ export class Designer {
       else if (clearEarthwork(base, plan, tile.x, tile.y)) this.changed([tile]);
       return;
     }
-    if (this.tool === 'moat') {
-      // Dragging only adds; clicking a single planned tile takes it off again.
-      if (this.painted.size === 1 && unmarkMoat(base, plan, tile.x, tile.y)) {
-        this.notice = { text: 'Moat taken off', bad: false };
-        this.changed([tile]);
-        return;
-      }
-      const problem = markMoat(base, plan, tile.x, tile.y);
-      if (problem) {
-        if (this.painted.size === 1) this.notice = { text: problem, bad: true };
-        return;
-      }
-      this.notice = null;
-      this.changed([tile]);
-      return;
-    }
     const result = shapeEarth(base, plan, tile.x, tile.y, this.tool === 'raise' ? 1 : -1, !this.sheer);
     if (result.problem) this.notice = { text: result.problem, bad: true };
     else this.changed(result.changed.map(([x, y]) => ({ x, y })));
@@ -354,13 +413,17 @@ export class Designer {
       else {
         this.notice = { text: 'Post taken off', bad: false };
         redeploy(sim);
+        this.renderTools();
       }
       return;
     }
     const problem = addPost(sim.map, sim.plan, sim.economy, sim.defence, this.troop, tile.x, tile.y);
     this.notice = problem ? { text: problem, bad: true } : { text: `${UNITS[this.troop].name} posted here`, bad: false };
     // With the raiders waiting at the edge, the soldiers move to the new posts straight away.
-    if (!problem) redeploy(sim);
+    if (!problem) {
+      redeploy(sim);
+      this.renderTools();
+    }
   }
 
   /** Lines for the readout about the hovered tile: the piece there, or what would happen on click. */
@@ -391,6 +454,19 @@ export class Designer {
     if (this.tool === 'extras' && !this.notice && there) {
       const has = !!there[this.extra];
       lines.push({ text: has ? `Click to take off the ${EXTRAS[this.extra].name.toLowerCase()}` : `Click to add ${EXTRAS[this.extra].name.toLowerCase()} (${formatCost(EXTRAS[this.extra].cost)})`, cls: 'good' });
+    }
+    const moat = this.notice ? null : this.moatLine();
+    if (moat) {
+      const ok = moat.filter((t) => t.ok).length;
+      const bad = moat.find((t) => !t.ok);
+      if (moat.length === 1) {
+        const planned = (this.host.plan.moats ?? []).includes(h.y * this.host.base.width + h.x);
+        lines.push(planned ? { text: 'Click to take this moat off', cls: 'good' } : bad ? { text: bad.problem ?? "Can't dig here", cls: 'bad' } : { text: 'Click, or drag a line, to plan a moat', cls: 'good' });
+      } else {
+        const labour = Math.round(ok * EARTHWORKS.lowerLabour * SIEGE.moatLabour);
+        lines.push({ text: `Line of ${moat.length} tiles: ${labour} worker-days of digging`, cls: 'good' });
+        if (bad) lines.push({ text: `${moat.length - ok} skipped: ${bad.problem ?? "can't be dug"}`, cls: 'warn' });
+      }
     }
     if (this.notice) lines.push({ text: this.notice.text, cls: this.notice.bad ? 'bad' : 'good' });
     else {
@@ -527,6 +603,16 @@ export class Designer {
       parts.push(choice('Extra', EXTRAS, this.extra, (v) => (this.extra = v), this));
     } else if (this.tool === 'troops') {
       parts.push(choice('Post', { archer: UNITS.archer, swordsman: UNITS.swordsman }, this.troop, (v) => (this.troop = v), this));
+      const row = document.createElement('div');
+      row.className = 'option-row';
+      const undo = button('Undo last post (U)', false);
+      undo.disabled = this.host.sim.defence.posts.length === 0;
+      undo.addEventListener('click', () => this.undoPost());
+      const clear = button('Clear my posts', false);
+      clear.disabled = this.host.sim.defence.posts.length === 0;
+      clear.addEventListener('click', () => this.clearPosts());
+      row.append(undo, clear);
+      parts.push(row);
     }
     this.toolsEl.replaceChildren(...parts);
   }

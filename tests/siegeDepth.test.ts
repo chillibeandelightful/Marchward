@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GATEHOUSE } from '../src/data/castle';
 import { COMBAT, SIEGE, type RaiderType } from '../src/data/combat';
 import type { TerrainId } from '../src/data/terrain';
-import { orderUnits } from '../src/sim/battle';
+import { orderUnits, releaseUnits } from '../src/sim/battle';
 import { checkPlacement, createPlan, footprint, pieceCost, pieceHp, pieceName, pieceStats, placePieces, planReport, viewPlan, type PieceSpec } from '../src/sim/castle';
 import { addPost } from '../src/sim/defence';
 import { Rng } from '../src/sim/rng';
@@ -313,6 +313,32 @@ describe('Commander mode', () => {
     expect(Math.round(u.y)).toBe(18);
     expect(u.order ?? null).toBeNull();
     expect(u.post).toBe(18 * SIZE + 15);
+  });
+
+  it('an order can be taken back: the soldier goes back to the post it held before', () => {
+    const s = field([GATE]);
+    s.economy.troops = { swordsman: 0, archer: 1 };
+    s.economy.troopsWanted = { swordsman: 0, archer: 1 };
+    expect(addPost(s.map, s.plan, s.economy, s.defence, 'archer', 12, 8)).toBeNull();
+    const b = raidWith(s, 1, ['raider']);
+    stepSim(s);
+    const archer = b.units.find((x) => x.type === 'archer');
+    if (!archer) throw new Error('no archer');
+    const wall = archer.on;
+    const post = archer.post;
+    expect(wall).toBeGreaterThan(0);
+    // Sent down to the ground inside, twice over: taking it back still means the first post.
+    expect(orderUnits(s, [archer.id], { kind: 'move', tile: 6 * SIZE + 16 })).toBe(1);
+    for (let i = 0; i < 30 * 20; i++) stepSim(s);
+    expect(orderUnits(s, [archer.id], { kind: 'move', tile: 4 * SIZE + 17 })).toBe(1);
+    for (let i = 0; i < 30 * 20; i++) stepSim(s);
+    expect(archer.on).toBe(0);
+    expect(releaseUnits(s, [archer.id])).toBe(1);
+    for (let i = 0; i < 30 * 30 && archer.on !== wall; i++) stepSim(s);
+    expect(archer.on).toBe(wall);
+    expect(archer.post).toBe(post);
+    // Nothing more to take back.
+    expect(releaseUnits(s, [archer.id])).toBe(0);
   });
 
   it("archers can be sent up onto a wall; swordsmen can't", () => {

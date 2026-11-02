@@ -17,6 +17,7 @@ const CAMP = 0x8a6a42;
 const BAD_TINT = 0xd8452f;
 const GOOD_TINT = 0x8fe08a;
 const CAULDRON = 0xe0802a;
+const MOAT_OK = 0x3f6f8f;
 
 /** What the top-down view draws each frame, besides the land and pieces. */
 export interface PlanOverlay {
@@ -24,8 +25,10 @@ export interface PlanOverlay {
   ghosts: { specs: readonly PieceSpec[]; problems: readonly (string | null)[] } | null;
   /** Troops' posts, shown outside battle. */
   posts: readonly Post[];
-  /** While raiders wait to attack: everyone on the field. */
+  /** While raiders wait to attack, and in a Commander battle: everyone on the field. */
   battle: BattleState | null;
+  /** A line of moat being dragged out: each tile, and whether it can be dug. */
+  moatLine?: readonly { x: number; y: number; ok: boolean }[] | null;
   camp: readonly [number, number];
 }
 
@@ -38,12 +41,14 @@ export class TopDownView {
   private readonly land = new Graphics();
   private readonly pieces = new Graphics();
   private readonly overlay = new Graphics();
+  /** Drawn over everything by others each frame (Commander's picks and orders). */
+  readonly marks = new Graphics();
   private grid = true;
   /** Tiles of the planned curtain, so previewed walls join up with it. */
   private curtain: ReadonlySet<string> = new Set();
 
   constructor() {
-    this.root.addChild(this.land, this.pieces, this.overlay);
+    this.root.addChild(this.land, this.pieces, this.overlay, this.marks);
   }
 
   setGrid(on: boolean): void {
@@ -118,8 +123,15 @@ export class TopDownView {
       o.ghosts.specs.forEach((s, i) => drawPiece(g, map, curtain, s, o.ghosts?.problems[i] ? bad : ok, 1, 0.8));
     }
 
+    if (o.moatLine)
+      for (const t of o.moatLine)
+        g.rect(t.x * T + 4, t.y * T + 4, T - 8, T - 8)
+          .fill({ color: t.ok ? MOAT_OK : BAD_TINT, alpha: 0.55 })
+          .stroke({ width: 2, color: t.ok ? GOOD_TINT : BAD_TINT, alpha: 0.9 });
+
     if (o.battle) {
-      for (const u of o.battle.units) drawTroop(g, u.x + u.ox, u.y + u.oy, u.side === 'defender' ? figures.tabard : figures.raider, u.type === 'archer' || u.type === 'raiderArcher');
+      // A unit's position already includes its spot within the tile.
+      for (const u of o.battle.units) if (u.hp > 0) drawTroop(g, u.x, u.y, u.side === 'defender' ? figures.tabard : figures.raider, u.type === 'archer' || u.type === 'raiderArcher');
     } else {
       // Several soldiers on one tile are spread out so each can be seen.
       const seen = new Map<string, number>();

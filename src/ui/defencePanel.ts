@@ -65,7 +65,7 @@ export class DefencePanel {
     command.append(el('strong', undefined, 'Command in battle'));
     for (const [mode, text] of [
       ['classic', 'Classic: post your troops beforehand; in battle they act alone.'],
-      ['commander', 'Commander: also give orders in battle. Click your soldiers (or drag round several), then click the ground to move them (archers can go up onto a wall or tower) or a raider to attack it. The right button pans; Space pauses.'],
+      ['commander', 'Commander: also give orders in battle. Click your soldiers (or drag round several), then click the ground to move them (archers can go up onto a wall or tower) or a raider to attack it. U sends the picked soldiers back to their posts. The battle is shown from above so nobody hides behind a wall (T for the normal view). The right button pans; Space pauses.'],
     ] as const) {
       const input = el('input');
       input.type = 'radio';

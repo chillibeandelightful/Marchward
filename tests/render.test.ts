@@ -189,8 +189,8 @@ describe('castle pieces on screen', () => {
 });
 
 describe('top-down plan view', () => {
-  it('is used only while placing pieces, and while posting troops before the fight', () => {
-    for (const tool of ['wall', 'tower', 'gatehouse', 'keep']) {
+  it('is used while placing, digging moats and removing, posting troops before the fight, and in Commander battles', () => {
+    for (const tool of ['wall', 'tower', 'gatehouse', 'keep', 'moat', 'remove']) {
       expect(wantsTopDown(tool, null)).toBe(true);
       expect(wantsTopDown(tool, 'deploy')).toBe(false);
       expect(wantsTopDown(tool, 'fight')).toBe(false);
@@ -198,7 +198,12 @@ describe('top-down plan view', () => {
     expect(wantsTopDown('troops', null)).toBe(true);
     expect(wantsTopDown('troops', 'deploy')).toBe(true);
     expect(wantsTopDown('troops', 'fight')).toBe(false);
-    for (const tool of ['look', 'raise', 'lower', 'remove', 'extras']) expect(wantsTopDown(tool, null)).toBe(false);
+    for (const tool of ['look', 'raise', 'lower', 'extras']) expect(wantsTopDown(tool, null)).toBe(false);
+    // Commander mode watches the fight from above, whatever tool is picked; Classic control never does.
+    for (const tool of ['look', 'troops', 'wall']) {
+      expect(wantsTopDown(tool, 'fight', true)).toBe(true);
+      expect(wantsTopDown(tool, 'fight', false)).toBe(false);
+    }
   });
 
   it('converts between isometric and plan coordinates without drift', () => {

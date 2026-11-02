@@ -191,6 +191,14 @@ export const RAIDS = {
    */
   costSpread: 6,
   repeatPenalty: 8,
+  /**
+   * The march in: raiders come on side by side in rows, a varying number to a row (between `rowMin`
+   * and `rowMax`), `colGap` tiles apart across the row and `rowGap` tiles between rows. The rows
+   * move at `pace` × the marchers' average speed and wait for stragglers more than `lagWait` tiles
+   * behind. Within `breakAt` tiles of the castle (or after `maxSeconds`) they break ranks and go
+   * about their own work as before.
+   */
+  march: { rowMin: 3, rowMax: 6, colGap: 0.85, rowGap: 1.1, pace: 0.9, lagWait: 1.6, breakAt: 6, maxSeconds: 90 },
 };
 
 /** Sappers, ladders, moats, sight lines and sorties (M6). Starting values to tune in playtesting. */
