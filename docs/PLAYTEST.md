@@ -212,3 +212,11 @@ After each milestone, add a section:
 - **Sappers:** from the second raid on, build a stretch of wall with no moat and no rock at its foot. Sappers should make for it and dig under a timber shelter, and the report's *Sappers, ladders and sorties* section says what they did. If they never appear, tell me which raid and where.
 - **The questions:** does the march look like an army coming, without looking drilled? Is Commander easier from above? Is anything still hard to pick or undo?
 **Known issues:** the top-down battle shows soldiers and pieces only: no arrows, ladders or oil (switch to the normal view with T to watch those). Commander orders can only be taken back to the post a soldier held before its first order in this battle.
+
+## Playtest fixes – Moats that bite, and bundle carriers (2026-11-02)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes)
+**How to test:**
+- **Moats hurt:** dig a moat along the outside of a wall (or build beside the river), post archers on the wall, and bring a raid. Raiders wading in take hits (the health bars over their heads drop), your archers hit them more often while they're in it, and their archers stop shooting while they're in the water. The report says how often the moat hurt them and how many it killed.
+- **Bundle carriers:** use **Bring the next raid now** until it's raid 3 or later. The Defence tab lists bundle carriers among the raiders; they march behind the front row with a bundle on their backs. They head for the edge of your moat, throw their bundles into one tile, and two bundles make a causeway (a heap of brushwood in the water) that the others walk across without getting hurt. Shoot them or sally out before they get there. With no moat, they just fight like raiders.
+- **The questions:** does a moat now feel worth digging? Are bundle carriers a fair answer to it, or too quick (or too slow)?
+**Known issues:** causeways are gone after the battle. Arrows and bundles aren't shown in the top-down Commander view yet, only the causeways.
