@@ -7,7 +7,7 @@ import type { SimState } from './state';
 import { createWorks } from './works';
 
 /** Bump when the shape of SimState changes, and add a step to MIGRATIONS that upgrades the old shape. */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export interface SaveFile {
   version: number;
@@ -52,6 +52,16 @@ const MIGRATIONS: Record<number, (state: Record<string, unknown>) => Record<stri
   3: (s) => {
     const defence = s.defence as Record<string, unknown>;
     return { ...s, defence: { ...defence, siege: defence.siege ?? null, control: defence.control ?? 'classic' } };
+  },
+  // Version 5: bundle carriers. A battle saved mid-fight gets none.
+  4: (s) => {
+    const defence = s.defence as Record<string, unknown>;
+    const battle = defence.battle as { stats?: { start?: Record<string, number>; lost?: Record<string, number> } } | null | undefined;
+    if (battle?.stats) {
+      battle.stats.start = { ...battle.stats.start, filler: battle.stats.start?.filler ?? 0 };
+      battle.stats.lost = { ...battle.stats.lost, filler: battle.stats.lost?.filler ?? 0 };
+    }
+    return s;
   },
 };
 

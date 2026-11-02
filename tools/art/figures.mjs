@@ -32,11 +32,13 @@ export const PEOPLE = {
   // they carry is drawn by the game, since it changes with what they're doing).
   sapper: { body: 0x3b4252, hat: 'cap', tool: 'pick' },
   ladderCrew: { body: 0x34466a, hat: 'cap', tool: 'axe' },
+  // Bundle carriers: hooded, with a billhook; the brushwood bundle is drawn by the game.
+  filler: { body: 0x4b4a36, hat: 'hood', tool: 'axe' },
 };
 
 /** The poses each kind has, and how many frames each. */
 export function posesFor(kind) {
-  const worker = !['swordsman', 'archer', 'raider', 'raiderArcher', 'sapper', 'ladderCrew'].includes(kind);
+  const worker = !['swordsman', 'archer', 'raider', 'raiderArcher', 'sapper', 'ladderCrew', 'filler'].includes(kind);
   if (kind === 'carter') return { walk: 4, sit: 1 };
   if (worker) return { work: 4, sit: 1 };
   const bow = PEOPLE[kind].tool === 'bow';

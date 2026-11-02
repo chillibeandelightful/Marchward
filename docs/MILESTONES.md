@@ -203,6 +203,22 @@ Notes from playing M6. None is built yet.
 - Suggested slot: after M7, as a small UI and combat follow-up (`src/ui/`, the raid spawn in `src/sim/battle.ts`), unless the playtester wants it first.
 - **Done before M7 (2026-11-02)**, at the playtester's choice; see the progress log. The sapper check needs a playtest against an unmoated wall.
 
+### Moats that bite, and a way across them (playtest, 2026-11-02)
+Today a wet moat is just shallow water and a dry one a ditch: raiders wade or scramble across at 3× or 2× the walking cost, take no harm, and then batter the wall from inside the moat. Two linked changes; none is built yet.
+
+**1. Crossing a moat costs the raiders.** Wading a wet moat should hurt, not only slow them. Options, roughly from simplest:
+- **A. Impassable wet moats.** Deep enough that nobody crosses on foot; raiders must bridge it (see 2) or go round to a gate or dry stretch. Simple and clear, but makes a full wet ring very strong.
+- **B. Hazards in the water.** Crossing a wet moat tile has a chance to cost a raider HP (sharpened stakes and hidden pits, men in heavy gear going under), rolled on the seeded RNG; a dry moat can be lined with stakes for a smaller chance. Raiders in a moat also fight and batter worse and can't shoot.
+- **C. Kill zone.** Raiders in a moat are easier targets: your archers hit them more often and oil cauldrons reach them, so a moat under a tower with slits is where an assault breaks.
+- Suggested: **B + C** (a hurt, a slowdown and an exposure, but still crossable), with wet moats worse than dry ones. Numbers in `src/data/combat.ts`. A could follow if moats still feel weak.
+
+**2. A moat-breaching unit.** A new raider type, the **faggot carrier** (working name): men carrying big bundles of brushwood or hay bales, who throw them into the moat at its narrowest point opposite where the raiders mean to break in. A few bundles fill a tile and make it a **causeway**: walkable at normal speed, no hazard, and sappers and ladder crews can work from it. Not strictly historical in this form, which is fine.
+- They come from a later raid than sappers (say raid 3), only when the raiders' chosen way in crosses a moat, and they're a priority target for sorties and archers (like sappers).
+- A causeway lasts until after the battle; your diggers clear it as a repair job afterwards (or it could be burnt with oil).
+- Art: carriers with bundles, and filled moat tiles, drawn in code first with painted art later.
+- Suggested slot: with 1, since together they make moats a trade-off rather than a hard wall or a mild slowdown. Either straight after M7, or in M7 if the playtester wants it first.
+- **Done before M7 (2026-11-02)** with B + C and the bundle carriers; see the progress log.
+
 ## Progress log
 Update as milestones complete.
 
@@ -338,3 +354,10 @@ Update as milestones complete.
 - **The march in** (`src/sim/battle.ts`): raiders arrive in rows side by side instead of a single file: swordsmen in front, ladder crews and sappers behind, archers at the back. Rows hold 3 to 6 men, a different number from one row to the next, slightly staggered. The front centre walks the raiders' way in and the rows follow its trail round bends like a column on a road; men whose place is in water or rough ground walk on the usual way and catch up, and the rows wait for stragglers. Within 6 tiles of the castle (or after 90 seconds) they break ranks and go about their work as before. Numbers in `RAIDS.march` (`src/data/combat.ts`). Raids of two or fewer just walk in.
 - **Sappers checked**: the code does deploy them (from raid 2, against pieces without a moat or rock at their foot); the shelter only shows while one is digging. No change.
 - Tests: row sizes vary and stay in limits; raiders keep a broad front across open ground and break ranks near the castle; the march is the same for the same seed; an archer's order taken back returns it to its wall; the plan view is used for Moat, Remove and Commander battles but not Classic ones. "Archers on high walls lose fewer men" now runs six seeds against raid 5, since the march changed the old four-seed sample.
+
+### Playtest fixes: moats that bite, and bundle carriers (2026-11-02)
+- **The moat** (`src/sim/battle.ts`): a ditch or shallow water within 2 tiles of a wall, tower or gatehouse counts as the castle's moat (a river at the foot of the walls too). Each moat tile a raider steps into has a chance to hurt him: 35% for 10 HP when wet (heavy gear, hidden stakes, foul water), 20% for 6 HP when dry (stakes and pits). Raiders weigh this when choosing a way in (4 extra tiles of walking per wet tile, 2 per dry one), your archers hit men in the moat 35% more often, and raider archers can't shoot from it. Numbers in `SIEGE.moat` (`src/data/combat.ts`).
+- **Bundle carriers**, from raid 3 (2, growing by half a man a raid): they march behind the front row with a bundle of brushwood on their backs, make for the near edge of the moat opposite the raiders' best way in, and throw it in (4 seconds). All make for one tile, so two bundles fill it into a **causeway**: walked as dry ground, no hurt, and sappers and ladder crews can work from it. With no moat in the way, or once their bundle is thrown, they fight like raiders. Causeways are gone after the battle. Drawn in code: the bundle on the back, bundles lying in the moat, a heap for a causeway; the figure is in the painted people sheet (`npm run art:draw`).
+- Report: a line for raiders hurt (and drowned) crossing the moat, and one for bundles thrown and causeways made.
+- Saves are version 5; a battle saved mid-fight gets no bundle carriers.
+- Tests (`tests/moatCrossing.test.ts`): a wet moat hurts more than a dry one, and a ditch out in the field away from the castle hurts nobody; bundle carriers come from raid 3, all fill one tile into a causeway at the foot of the wall and then fight on, and fight like raiders with no moat; an old save mid-battle loads.

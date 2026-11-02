@@ -142,7 +142,7 @@ export class DefencePanel {
       setClass(this.status, 'bad');
       setText(
         this.statusDetail,
-        `Raiders left: ${c.raider} ${UNITS.raider.plural.toLowerCase()}, ${c.raiderArcher} archers${c.sapper > 0 ? `, ${c.sapper} ${(c.sapper === 1 ? UNITS.sapper.name : UNITS.sapper.plural).toLowerCase()}` : ''}${c.ladderCrew > 0 ? `, ${c.ladderCrew} ${(c.ladderCrew === 1 ? UNITS.ladderCrew.name : UNITS.ladderCrew.plural).toLowerCase()}` : ''}. Your soldiers: ${c.swordsman} swordsmen, ${c.archer} archers.${(b.ladders ?? []).some((l) => l.up) ? ' Ladders are up against your walls!' : ''}${b.phase === 'retreat' ? ' The raiders are falling back.' : ''}`,
+        `Raiders left: ${c.raider} ${UNITS.raider.plural.toLowerCase()}, ${c.raiderArcher} archers${c.sapper > 0 ? `, ${c.sapper} ${(c.sapper === 1 ? UNITS.sapper.name : UNITS.sapper.plural).toLowerCase()}` : ''}${c.ladderCrew > 0 ? `, ${c.ladderCrew} ${(c.ladderCrew === 1 ? UNITS.ladderCrew.name : UNITS.ladderCrew.plural).toLowerCase()}` : ''}${c.filler > 0 ? `, ${c.filler} ${(c.filler === 1 ? UNITS.filler.name : UNITS.filler.plural).toLowerCase()}` : ''}. Your soldiers: ${c.swordsman} swordsmen, ${c.archer} archers.${(b.ladders ?? []).some((l) => l.up) ? ' Ladders are up against your walls!' : ''}${b.phase === 'retreat' ? ' The raiders are falling back.' : ''}`,
       );
     } else if (d.siege) {
       const s = d.siege;

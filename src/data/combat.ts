@@ -4,8 +4,8 @@ import type { Cost } from './castle';
 export type TroopType = 'swordsman' | 'archer';
 export const TROOP_TYPES: readonly TroopType[] = ['swordsman', 'archer'];
 
-export type RaiderType = 'raider' | 'raiderArcher' | 'sapper' | 'ladderCrew';
-export const RAIDER_TYPES: readonly RaiderType[] = ['raider', 'raiderArcher', 'sapper', 'ladderCrew'];
+export type RaiderType = 'raider' | 'raiderArcher' | 'sapper' | 'ladderCrew' | 'filler';
+export const RAIDER_TYPES: readonly RaiderType[] = ['raider', 'raiderArcher', 'sapper', 'ladderCrew', 'filler'];
 
 export type UnitType = TroopType | RaiderType;
 export type Side = 'defender' | 'attacker';
@@ -73,6 +73,16 @@ export const UNITS: Record<UnitType, UnitKind> = {
     hp: 40,
     speed: 0.36,
     melee: { damage: 4, cooldown: 1.2 },
+    bow: null,
+    batter: 0.5,
+  },
+  filler: {
+    name: 'Bundle carrier',
+    plural: 'Bundle carriers',
+    side: 'attacker',
+    hp: 40,
+    speed: 0.35,
+    melee: { damage: 5, cooldown: 1.1 },
     bow: null,
     batter: 0.5,
   },
@@ -183,6 +193,7 @@ export const RAIDS = {
     raiderArcher: { base: 1, perRaid: 1, from: 1 },
     sapper: { base: 1, perRaid: 0.5, from: 2 },
     ladderCrew: { base: 2, perRaid: 0.5, from: 2 },
+    filler: { base: 2, perRaid: 0.5, from: 3 },
   } satisfies Record<RaiderType, { base: number; perRaid: number; from: number }>,
   /**
    * Choosing where to come from: each edge is weighed by how cheap its best way in is (see
@@ -224,6 +235,22 @@ export const SIEGE = {
   },
   /** Moats: digging one tile costs this many times an ordinary lowering. */
   moatLabour: 1.5,
+  /**
+   * Crossing a moat: a ditch, or shallow water, within `zone` tiles of a wall, tower or gatehouse.
+   * Each moat tile a raider steps into may hurt him (stakes and pits in a dry ditch; heavy gear,
+   * hidden stakes and foul water in a wet one). Raiders count it as `pathCost` extra tiles of
+   * walking when choosing a way in. Your archers hit men floundering in it more often (× `exposed`),
+   * and raider archers can't shoot from it. Bundle carriers throw brushwood bundles into a moat tile
+   * from its edge, `fill.seconds` each; `fill.bundles` of them make it a causeway, walked as dry
+   * ground, with no hurt, and sappers and ladder crews can work from it. Causeways go after the battle.
+   */
+  moat: {
+    zone: 2,
+    hurt: { wet: { chance: 0.35, damage: 10 }, dry: { chance: 0.2, damage: 6 } },
+    pathCost: { wet: 4, dry: 2 },
+    exposed: 1.35,
+    fill: { seconds: 4, bundles: 2 },
+  },
   /**
    * Sight lines: a shot over a piece in the way needs the shooter to stand at least as high as its
    * top, or to lob it high, which only works with both shooter and target this far from the piece,

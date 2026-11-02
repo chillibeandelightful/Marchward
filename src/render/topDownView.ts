@@ -1,6 +1,6 @@
 import { Container, Graphics } from 'pixi.js';
 import { KEEP, WALL_THICKNESS } from '../data/castle';
-import type { BattleState } from '../sim/battle';
+import { isCauseway, type BattleState } from '../sim/battle';
 import { footprint, isCurtain, linked, pieceAt, type Piece, type PieceSpec, type PlanView } from '../sim/castle';
 import type { Post } from '../sim/defence';
 import { heightAt, NEIGHBOURS, stepBetween, terrainAt, type TerrainMap } from '../sim/terrain';
@@ -18,6 +18,7 @@ const BAD_TINT = 0xd8452f;
 const GOOD_TINT = 0x8fe08a;
 const CAULDRON = 0xe0802a;
 const MOAT_OK = 0x3f6f8f;
+const BUNDLE = 0x9a7a3e;
 
 /** What the top-down view draws each frame, besides the land and pieces. */
 export interface PlanOverlay {
@@ -128,6 +129,18 @@ export class TopDownView {
         g.rect(t.x * T + 4, t.y * T + 4, T - 8, T - 8)
           .fill({ color: t.ok ? MOAT_OK : BAD_TINT, alpha: 0.55 })
           .stroke({ width: 2, color: t.ok ? GOOD_TINT : BAD_TINT, alpha: 0.9 });
+
+    if (o.battle)
+      // Bundles in the moat: a light mark per bundle, a full causeway once filled.
+      for (const [key, n] of Object.entries(o.battle.fill ?? {})) {
+        const i = Number(key);
+        const x = i % map.width;
+        const y = Math.floor(i / map.width);
+        const full = isCauseway(o.battle, i);
+        g.rect(x * T + (full ? 2 : 14), y * T + (full ? 2 : 14), full ? T - 4 : T - 28, full ? T - 4 : (T - 28) * Math.min(1, n / 2))
+          .fill({ color: BUNDLE, alpha: 0.9 })
+          .stroke({ width: 1.5, color: 0x3a2a16 });
+      }
 
     if (o.battle) {
       // A unit's position already includes its spot within the tile.

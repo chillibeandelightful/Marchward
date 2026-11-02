@@ -40,6 +40,8 @@ export interface Unit {
   postedOn: number;
   /** Ladder crews: still carrying their ladder (missing in saves from before M6). */
   ladder?: boolean;
+  /** Bundle carriers: still carrying their bundle of brushwood. */
+  bundle?: boolean;
   /** Sappers digging, or a ladder crew raising its ladder: seconds at it so far (0 when not). */
   work?: number;
   /** Swordsmen: the raider they have gone out after (0 or missing for none). */
@@ -191,6 +193,12 @@ export interface SiegeStats {
   lobbed: number;
   /** Sappers killed while digging, and raiders killed up on your walls. */
   sappersKilled: number;
+  /** Raiders hurt crossing a moat, and those it killed. */
+  moatHurt?: number;
+  moatKilled?: number;
+  /** Bundles thrown in, and moat tiles filled into causeways. */
+  bundles?: number;
+  causeways?: number;
   /** Drawbridges battered down (missing in older saves). */
   bridgesBroken?: number;
 }
@@ -227,6 +235,8 @@ export interface BattleState {
   ladders?: Ladder[];
   /** The march in (missing in saves from before it, which skip it). */
   march?: March;
+  /** Bundles thrown into moat tiles so far, by tile; enough of them make a causeway. */
+  fill?: Record<string, number>;
 }
 
 export type Outcome = 'repelled' | 'plundered' | 'held';
@@ -278,6 +288,23 @@ interface Derived {
   sapSpots: Map<number, number>;
   ladderField: Float64Array;
   ladderSpots: Map<number, number>;
+  /** Moat round the castle, per tile: 0 none (or filled), 1 a dry ditch, 2 wet. */
+  moat: Uint8Array;
+  /** Whether anyone was still carrying a bundle when this was worked out. */
+  carrying: boolean;
+  /** Where bundle carriers stand to throw their bundles (tile -> moat tile), and the way there. */
+  fillSpots: Map<number, number>;
+  fillField: Float64Array;
+}
+
+/** Has this moat tile been filled into a causeway? */
+export function isCauseway(b: BattleState, i: number): boolean {
+  return (b.fill?.[i] ?? 0) >= SIEGE.moat.fill.bundles;
+}
+
+/** A moat or water there, as far as sappers and ladders are concerned (a causeway is solid ground). */
+function moatAt(map: TerrainMap, b: BattleState, i: number): boolean {
+  return isMoatLike(map, i % map.width, Math.floor(i / map.width)) && !isCauseway(b, i);
 }
 
 const derived = new WeakMap<BattleState, Derived>();
@@ -307,13 +334,11 @@ function strengthLeft(b: BattleState): { batterers: number; sappers: number; lad
  * front of it: the cheapest of battering it down, undermining it and laddering it, for the
  * raiders they have.
  */
-function breakInCost(map: TerrainMap, p: PieceCombat, from: number, have: { batterers: number; sappers: number; ladders: number }, laddered: boolean): number | null {
+function breakInCost(map: TerrainMap, b: BattleState, p: PieceCombat, from: number, have: { batterers: number; sappers: number; ladders: number }, laddered: boolean): number | null {
   if (p.kind === 'keep') return null;
   const climb = SIEGE.ladder.climb;
   if (laddered) return climb;
-  const fx = from % map.width;
-  const fy = (from - fx) / map.width;
-  const moat = isMoatLike(map, fx, fy);
+  const moat = moatAt(map, b, from);
   let best = Infinity;
   if (have.batterers > 0) {
     // A raised drawbridge has to come down first, battered from the moat at a slower rate.
@@ -326,7 +351,7 @@ function breakInCost(map: TerrainMap, p: PieceCombat, from: number, have: { batt
   const need = p.sapNeed ?? null;
   if (have.sappers > 0 && need !== null && !moat)
     best = Math.min(best, (need - (p.sap ?? 0)) / Math.min(have.sappers, SIEGE.sap.perPiece) / secondsPerTile);
-  if (have.ladders > 0 && !moat && canLadder(map, p, from)) best = Math.min(best, climb + SIEGE.ladder.raise / secondsPerTile);
+  if (have.ladders > 0 && !moat && canLadder(map, b, p, from)) best = Math.min(best, climb + SIEGE.ladder.raise / secondsPerTile);
   return Number.isFinite(best) ? best : null;
 }
 
@@ -336,16 +361,17 @@ function gateShare(p: PieceCombat, from: number): number {
 }
 
 /** Can a ladder from this tile reach the top of the piece? Not from a moat or water. */
-function canLadder(map: TerrainMap, p: PieceCombat, from: number): boolean {
+function canLadder(map: TerrainMap, b: BattleState, p: PieceCombat, from: number): boolean {
   const fx = from % map.width;
   const fy = (from - fx) / map.width;
-  if (p.kind === 'keep' || isMoatLike(map, fx, fy) || terrainAt(map, fx, fy).moveCost === null) return false;
+  if (p.kind === 'keep' || moatAt(map, b, from) || terrainAt(map, fx, fy).moveCost === null) return false;
   return p.ground + p.levels - heightAt(map, fx, fy) <= LADDER_REACH;
 }
 
 function derive(map: TerrainMap, b: BattleState): Derived {
   const old = derived.get(b);
-  if (old && old.version === b.version) {
+  const carrying = b.units.some((u) => u.type === 'filler' && u.bundle && u.hp > 0);
+  if (old && old.version === b.version && old.carrying === carrying) {
     if (old.rallyFront !== b.front) {
       old.rallyFront = b.front;
       old.rallyField = b.front >= 0 ? distanceField(map, [b.front], old.attackWalk) : null;
@@ -358,15 +384,36 @@ function derive(map: TerrainMap, b: BattleState): Derived {
   const have = strengthLeft(b);
   const bridged = new Set<number>();
   for (const p of Object.values(b.pieces)) if (p.standing && (p.bridge ?? 0) > 0) for (const t of p.bridgeTiles ?? []) bridged.add(t);
+  // The moat round the castle: ditches and shallow water near its walls, towers and gatehouses.
+  const moat = new Uint8Array(map.width * map.height);
+  const reach = SIEGE.moat.zone;
+  for (const p of Object.values(b.pieces)) {
+    if (!p.standing || p.kind === 'keep') continue;
+    for (const t of p.tiles) {
+      const tx = t % map.width;
+      const ty = (t - tx) / map.width;
+      for (let y = Math.max(0, ty - reach); y <= Math.min(map.height - 1, ty + reach); y++)
+        for (let x = Math.max(0, tx - reach); x <= Math.min(map.width - 1, tx + reach); x++) {
+          const i = y * map.width + x;
+          const ter = terrainAt(map, x, y);
+          if (moat[i] || ter.moveCost === null || isCauseway(b, i)) continue;
+          if (ter.id === 'ditch') moat[i] = 1;
+          else if (ter.water) moat[i] = 2;
+        }
+    }
+  }
   const attackCost: StepCost = (i, j) => {
-    const land = landCost(map, i, j);
-    if (land === null) return null;
+    // A causeway of bundles is walked like dry ground.
+    if (isCauseway(b, j) && !at(j)?.standing) return 1;
+    const raw = landCost(map, i, j);
+    if (raw === null) return null;
+    const land = raw + (moat[j] === 2 ? SIEGE.moat.pathCost.wet : moat[j] === 1 ? SIEGE.moat.pathCost.dry : 0);
     const p = at(j);
     if (!p) return land;
     if (!p.standing) return land * COMBAT.rubbleCost;
     const from = at(i);
     if (from?.standing) return null; // no walking along the wall tops
-    const extra = breakInCost(map, p, i, have, laddered.has(p.id));
+    const extra = breakInCost(map, b, p, i, have, laddered.has(p.id));
     return extra === null ? null : land + extra;
   };
   const attackWalk: StepCost = (i, j) => {
@@ -406,9 +453,9 @@ function derive(map: TerrainMap, b: BattleState): Derived {
         if (at(n)?.standing || !outside[n]) continue;
         const nx = n % map.width;
         const ny = (n - nx) / map.width;
-        if (isMoatLike(map, nx, ny) || terrainAt(map, nx, ny).moveCost === null) continue;
+        if (moatAt(map, b, n) || terrainAt(map, nx, ny).moveCost === null) continue;
         if (p.sapNeed !== null && p.sapNeed !== undefined) sapSpots.set(n, p.id);
-        if (canLadder(map, p, n) && !ladderAt.has(n) && !laddered.has(p.id)) ladderSpots.set(n, p.id);
+        if (canLadder(map, b, p, n) && !ladderAt.has(n) && !laddered.has(p.id)) ladderSpots.set(n, p.id);
       }
   }
   // Prefer the piece the raiders mean to break in at (the one on the cheapest way in), then the weakest.
@@ -435,6 +482,26 @@ function derive(map: TerrainMap, b: BattleState): Derived {
   };
   const ladderStart = (t: number) => ((ladderSpots.get(t) as number) === strike ? 0 : 6);
 
+  // Bundle carriers stand on the near edge of the moat, opposite the raiders' best way in, and throw.
+  const fillSpots = new Map<number, number>();
+  if (carrying) {
+    const edge: [number, number][] = [];
+    for (let z = 0; z < moat.length; z++) {
+      if (!moat[z]) continue;
+      for (const n of edgeTiles4(map, z)) {
+        if (moat[n] || at(n)?.standing || !outside[n] || landCost(map, n, z) === null) continue;
+        if (Number.isFinite(attack[z] as number) && (attack[z] as number) < (attack[n] as number)) edge.push([n, z]);
+      }
+    }
+    // All make for one tile, so their bundles build one causeway: one already started, or else the
+    // one on the raiders' cheapest way in.
+    const started = (z: number) => (b.fill?.[z] ?? 0) > 0;
+    let target = -1;
+    for (const [, z] of edge)
+      if (target < 0 || Number(started(z)) > Number(started(target)) || (started(z) === started(target) && (attack[z] as number) < (attack[target] as number))) target = z;
+    for (const [n, z] of edge) if (z === target) fillSpots.set(n, z);
+  }
+
   const d: Derived = {
     version: b.version,
     occupant,
@@ -451,6 +518,10 @@ function derive(map: TerrainMap, b: BattleState): Derived {
     sapField: distanceField(map, [...sapSpots.keys()], attackWalk, sapStart),
     ladderSpots,
     ladderField: distanceField(map, [...ladderSpots.keys()], attackWalk, ladderStart),
+    moat,
+    carrying,
+    fillSpots,
+    fillField: distanceField(map, [...fillSpots.keys()], attackWalk),
   };
   derived.set(b, d);
   return d;
@@ -563,7 +634,7 @@ export function slotPoint(m: March, sl: { back: number; across: number }): { x: 
 // Starting a battle.
 
 function zeroUnits(): Record<UnitType, number> {
-  return { swordsman: 0, archer: 0, raider: 0, raiderArcher: 0, sapper: 0, ladderCrew: 0 };
+  return { swordsman: 0, archer: 0, raider: 0, raiderArcher: 0, sapper: 0, ladderCrew: 0, filler: 0 };
 }
 
 /** The pieces as they stand today: unfinished ones have part of their strength and height. */
@@ -761,7 +832,7 @@ export function startBattle(s: SimState, rng: Rng): BattleState {
   const near = [...spawn].sort((a, c) => tileDist(map, a, cx, cy) - tileDist(map, c, cx, cy) || a - c).slice(0, 8);
   const strength = raidStrength(b.raid);
   // Swordsmen in the front rows, then the ladders and sappers, archers at the back.
-  const marchOrder: RaiderType[] = ['raider', 'ladderCrew', 'sapper', 'raiderArcher'];
+  const marchOrder: RaiderType[] = ['raider', 'filler', 'ladderCrew', 'sapper', 'raiderArcher'];
   const types = marchOrder.flatMap((t) => new Array<RaiderType>(strength[t]).fill(t));
   const slots = marchSlots(rng, types.length);
   const [hx, hy] = EDGE_INWARD[b.from];
@@ -788,7 +859,8 @@ export function startBattle(s: SimState, rng: Rng): BattleState {
     }
     u.slot = sl;
     if (t === 'ladderCrew') u.ladder = true;
-    b.stats.start[t]++;
+    if (t === 'filler') u.bundle = true;
+    b.stats.start[t] = (b.stats.start[t] ?? 0) + 1;
   });
   // Rarely worth it for a handful; a few men just walk in together.
   if (types.length > 2) b.march = march;
@@ -1162,6 +1234,16 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
       const was = u.on;
       u.on = p?.standing ? p.id : 0;
       if (u.on && u.on !== was) siege.climbed++;
+      // Into the moat: stakes, pits, deep mud or heavy gear in the water may cost him.
+      const wet = der.moat[to];
+      if (wet && !u.on) {
+        const hurt = wet === 2 ? SIEGE.moat.hurt.wet : SIEGE.moat.hurt.dry;
+        if (rng.next() < hurt.chance) {
+          u.hp -= hurt.damage;
+          siege.moatHurt = (siege.moatHurt ?? 0) + 1;
+          if (u.hp <= 0) siege.moatKilled = (siege.moatKilled ?? 0) + 1;
+        }
+      }
     }
   };
 
@@ -1187,7 +1269,9 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     if (lob) siege.lobbed++;
     // Shooting up is harder: each level the target stands above the shooter takes some off.
     const up = Math.max(0, unitLevel(map, b, foe) - unitLevel(map, b, u));
-    const chance = bow.hit * trees * shelter * (lob ? SIEGE.lobHit : 1) * Math.max(0.4, 1 - COMBAT.upwardPenalty * up);
+    // Raiders floundering in the moat are easy marks.
+    const exposed = u.side === 'defender' && !foe.on && der.moat[tileOf(map, foe.x, foe.y)] ? SIEGE.moat.exposed : 1;
+    const chance = Math.min(0.95, bow.hit * trees * shelter * exposed * (lob ? SIEGE.lobHit : 1) * Math.max(0.4, 1 - COMBAT.upwardPenalty * up));
     const r = rng.next();
     const hit = r < chance * (1 - cover);
     if (!hit && r < chance && p) {
@@ -1440,7 +1524,8 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
         continue;
       }
     }
-    if (kind.bow) {
+    // No shooting from the moat: bowstrings and footing are both gone.
+    if (kind.bow && !(der.moat[here] && !u.on)) {
       const target = nearest(u, defenders, (f, d) => canShoot(u, f, d));
       if (target) {
         shoot(u, target);
@@ -1455,8 +1540,8 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
     const near = nearest(u, defenders, (f, d) => !f.on && d <= COMBAT.raiderAggro && clearWalk(map, here, tileOf(map, f.x, f.y), der.attackWalk));
     // On the march in, keep in the rows, unless soldiers come at them.
     if (!near && keepRank(u, here)) continue;
-    // Sappers and ladder crews go about their own work, unless soldiers come at them.
-    if (siegeWork(u, here)) continue;
+    // Sappers, ladder crews and bundle carriers go about their own work, unless soldiers come at them.
+    if (siegeWork(u, here) || fillWork(u, here)) continue;
     if (near) {
       move(u, near.x, near.y, der.attackWalk);
       continue;
@@ -1731,6 +1816,36 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
       bs.version++;
       der = derive(map, bs);
     }
+    return true;
+  }
+
+  /**
+   * Bundle carriers walk to the near edge of the moat opposite the raiders' way in and throw their
+   * bundle into it; enough bundles in one tile make a causeway. With no moat to fill, or once the
+   * bundle is thrown, they fight like any raider.
+   */
+  function fillWork(u: Unit, here: number): boolean {
+    if (u.type !== 'filler' || !u.bundle) return false;
+    const bs = b as BattleState;
+    const z = der.fillSpots.get(here);
+    if (z !== undefined) {
+      u.act = 'raise';
+      u.work = (u.work ?? 0) + DT;
+      if (u.work < SIEGE.moat.fill.seconds) return true;
+      u.work = 0;
+      u.bundle = false;
+      const fill = (bs.fill ??= {});
+      fill[z] = (fill[z] ?? 0) + 1;
+      siege.bundles = (siege.bundles ?? 0) + 1;
+      if (fill[z] === SIEGE.moat.fill.bundles) siege.causeways = (siege.causeways ?? 0) + 1;
+      bs.version++;
+      der = derive(map, bs);
+      return true;
+    }
+    if (der.fillSpots.size === 0) return false;
+    const step = downhill(map, der.fillField, here, der.attackWalk);
+    if (step === null) return false;
+    move(u, (step % map.width) + u.ox * 0.5, Math.floor(step / map.width) + u.oy * 0.5, der.attackWalk);
     return true;
   }
 
@@ -2089,6 +2204,24 @@ function siegeReport(b: BattleState): ReportLine[] {
       });
       lines.push({ text: 'Soldiers on a wall push ladders away; a High wall, a Medium wall on a mound, or a moat at its foot can\'t be laddered at all.', cls: 'dim' });
     }
+  }
+  if ((sg.moatHurt ?? 0) > 0)
+    lines.push({
+      text: `The moat hurt raiders ${plural(sg.moatHurt ?? 0, 'time', 'times')} as they crossed it${(sg.moatKilled ?? 0) > 0 ? `, and ${plural(sg.moatKilled ?? 0, 'of them never came out', 'of them never came out')}` : ''}. Your archers hit men in it more often, and raider archers can't shoot from it.`,
+      cls: 'good',
+    });
+  const carriers = st.start.filler ?? 0;
+  if (carriers > 0) {
+    const bundles = sg.bundles ?? 0;
+    const causeways = sg.causeways ?? 0;
+    if (bundles === 0)
+      lines.push({ text: `The ${plural(carriers, 'bundle carrier', 'bundle carriers')} never threw a bundle: there was no moat in their way (so they fought like any raider), or they were cut down before they reached it.`, cls: 'good' });
+    else
+      lines.push({
+        text: `Bundle carriers threw ${plural(bundles, 'bundle', 'bundles')} of brushwood into your moat${causeways > 0 ? `, filling ${plural(causeways, 'tile', 'tiles')} into a causeway the raiders walked across dry-shod` : ', but never filled a tile across'}.`,
+        cls: causeways > 0 ? 'bad' : 'warn',
+      });
+    if (bundles > 0) lines.push({ text: 'Archers and sorties at the moat\'s edge keep bundle carriers off; a moat two tiles wide needs twice the bundles.', cls: 'dim' });
   }
   if (sg.sorties > 0) lines.push({ text: `Your swordsmen went out through the gate ${plural(sg.sorties, 'time', 'times')} after raiders outside.`, cls: 'good' });
   if (sg.lobbed > 0) lines.push({ text: `${plural(sg.lobbed, 'arrow was', 'arrows were')} lobbed high over walls in the way, hitting half as often.`, cls: 'dim' });

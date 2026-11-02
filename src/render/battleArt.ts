@@ -2,7 +2,7 @@ import type { Graphics } from 'pixi.js';
 import { shade } from './terrainStyle';
 import { SIEGE, UNITS, type TroopType, type UnitType } from '../data/combat';
 import { simConfig } from '../data/config';
-import type { BattleState, Unit } from '../sim/battle';
+import { isCauseway, type BattleState, type Unit } from '../sim/battle';
 import { bridgeEnds, footprint, pieceLevels } from '../sim/castle';
 import { postCapacity } from '../sim/defence';
 import type { SimState } from '../sim/state';
@@ -100,6 +100,7 @@ function drawUnit(host: ActorHost, sim: SimState, b: BattleState, u: Unit, t: nu
   drawSoldier(g, p.sx, p.sy, u.type, u.act, t + u.id * 0.37, u.hp / UNITS[u.type].hp, u.on !== 0, left);
   if (u.type === 'ladderCrew' && u.ladder) drawCarriedLadder(g, p.sx, p.sy, u.act === 'raise' ? Math.min(1, (u.work ?? 0) / SIEGE.ladder.raise) : 0, left, sc);
   if (u.type === 'sapper' && u.act === 'sap') drawShelter(g, p.sx, p.sy, sc);
+  if (u.type === 'filler' && u.bundle) drawBundle(g, p.sx + (left ? 3 : -3) * sc, p.sy - 12 * sc - (u.act === 'raise' ? Math.min(1, (u.work ?? 0) / SIEGE.moat.fill.seconds) * 6 * sc : 0), sc);
 }
 
 const LADDER_WOOD = 0x7a5530;
@@ -137,6 +138,19 @@ function drawCarriedLadder(g: Graphics, sx: number, sy: number, raised: number, 
   drawLadder(g, back.x, back.y, front.x, front.y, 2.2 * sc);
 }
 
+const BUNDLE = 0x9a7a3e;
+const BUNDLE_DARK = 0x5e4622;
+
+/** A bundle of brushwood: a bound bale of sticks, carried on the back or lying in the moat. */
+function drawBundle(g: Graphics, sx: number, sy: number, sc: number, alpha = 1): void {
+  const w = 6.5 * sc;
+  const h = 4 * sc;
+  g.ellipse(sx, sy, w, h).fill({ color: BUNDLE, alpha }).stroke({ width: 1, color: LADDER_INK, alpha });
+  for (let i = -2; i <= 2; i++) g.moveTo(sx - w * 0.85, sy + i * h * 0.3).lineTo(sx + w * 0.85, sy + i * h * 0.3).stroke({ width: 0.7, color: BUNDLE_DARK, alpha });
+  // The bindings.
+  for (const k of [-0.45, 0.45]) g.moveTo(sx + k * w, sy - h).lineTo(sx + k * w, sy + h).stroke({ width: 1.2, color: 0x3a2a16, alpha });
+}
+
 /** The timber shelter a sapper digs under, to keep arrows off. */
 function drawShelter(g: Graphics, sx: number, sy: number, sc: number): void {
   const w = 10 * sc;
@@ -160,6 +174,20 @@ function drawSpoil(g: Graphics, sx: number, sy: number, grown: number, sc: numbe
 /** Ladders against the walls (or lying where they were pushed away), and cracks where sappers are digging. */
 function drawSiegeWorks(host: ActorHost, sim: SimState, b: BattleState): void {
   const w = sim.map.width;
+  // Bundles thrown into the moat: a few lying in it, a heap once it's a causeway.
+  for (const [key, n] of Object.entries(b.fill ?? {})) {
+    const i = Number(key);
+    const x = i % w;
+    const y = Math.floor(i / w);
+    const g = host.layer(x + y);
+    if (!g) continue;
+    const sc = style().figures.scale;
+    const spots = isCauseway(b, i) ? [[-0.25, -0.2], [0.2, -0.25], [-0.2, 0.2], [0.25, 0.2], [0, 0]] : [[-0.15, 0], [0.18, 0.1]].slice(0, n);
+    for (const [dx, dy] of spots) {
+      const p = isoToScreen(x + (dx as number), y + (dy as number), host.ground(x, y));
+      drawBundle(g, p.sx, p.sy, sc * 1.3);
+    }
+  }
   for (const l of b.ladders ?? []) {
     const pc = b.pieces[l.piece];
     if (!pc) continue;
