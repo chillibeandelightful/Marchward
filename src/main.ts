@@ -483,7 +483,7 @@ async function start(): Promise<void> {
     const s = shapeAt[ty * sim.map.width + tx];
     return s ? surfaceLevel(s.corners, x - tx, y - ty) : 0;
   };
-  const commander = new Commander(() => sim, ground);
+  const commander = new Commander(() => sim, ground, () => topDown);
 
   if (import.meta.env.DEV) {
     // For automated screenshots in development: where a tile's centre is on screen, and a fast-forward.
@@ -521,6 +521,7 @@ async function start(): Promise<void> {
   }
 
   let ghostKey = '';
+  let shownFallen = 0;
   app.ticker.add((ticker) => {
     loop.advance(ticker.deltaMS);
     input.update(ticker.deltaMS);
@@ -563,7 +564,13 @@ async function start(): Promise<void> {
       if (last) reportView.show(last);
     }
 
-    setTopDown(topDownAllowed && wantsTopDown(designer.tool, battlePhase()));
+    setTopDown(topDownAllowed && wantsTopDown(designer.tool, battlePhase(), sim.defence.control === 'commander'));
+    // Pieces knocked down in a battle watched from above.
+    const fallen = sim.defence.battle ? Object.values(sim.defence.battle.pieces).filter((p) => !p.standing).length : 0;
+    if (fallen !== shownFallen) {
+      shownFallen = fallen;
+      planDirty = true;
+    }
     if (topDown && planDirty) {
       planDirty = false;
       plan.setLand(shownMap());
@@ -623,7 +630,9 @@ async function start(): Promise<void> {
           hover: hovered ? { x: hovered.x, y: hovered.y } : null,
           ghosts: preview ? { specs: preview.specs, problems: preview.check.problems } : null,
           posts: sim.defence.posts,
-          battle: battle && deploying(battle) ? battle : null,
+          // Before the fight, and in a Commander battle (the only fight watched from above).
+          battle: battle ?? null,
+          moatLine: designer.moatLine(),
           camp: sim.camp,
         },
         shownMap(),
@@ -635,7 +644,8 @@ async function start(): Promise<void> {
     const actors = { layer: (d: number) => terrain.actorsFor(d), ground, route };
     drawWorkers(actors, sim, performance.now());
     drawBattle(actors, sim, loop.alpha, performance.now(), sky);
-    commander.draw(sky);
+    plan.marks.clear();
+    commander.draw(topDown ? plan.marks : sky);
 
     hud.update(sim, view.map, hovered, designer.hoverLines());
     topBar.update();

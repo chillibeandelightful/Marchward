@@ -124,12 +124,12 @@ describe('defending', () => {
   it('archers on high walls lose fewer men to raider archers than on low ones', () => {
     const losses = (height: 'low' | 'high') => {
       let lost = 0;
-      for (const seed of [1, 2, 3, 4]) {
+      for (const seed of [1, 2, 3, 4, 5, 6]) {
         const s = createSim(seed);
         hilltopCastle(s, { height }, { height });
         build(s);
         s.economy.troops = { swordsman: 0, archer: 8 };
-        s.defence.raidCount = 2;
+        s.defence.raidCount = 4;
         raidNow(s);
         fight(s);
         lost += report(s).defenders.lost;

@@ -48,6 +48,24 @@ export interface Unit {
   rest?: number;
   /** Commander mode: the order this soldier is carrying out, if any. */
   order?: Order | null;
+  /** Commander mode: the post it held before its first order, so the order can be taken back (null: none to go back to). */
+  home?: number | null;
+  /** Raiders on the march in: their place in the rows, behind and across from the front centre (tiles). */
+  slot?: { back: number; across: number } | null;
+}
+
+/**
+ * The raiders' rows on the march in: the front centre, the way it faces, the way it has come (so the
+ * rows behind follow it round bends, like a column on a road), and whether they've broken ranks.
+ */
+export interface March {
+  x: number;
+  y: number;
+  hx: number;
+  hy: number;
+  /** Points the front centre has passed, newest first, as x, y pairs. */
+  trail: number[];
+  done: boolean;
 }
 
 /** An order given in Commander mode: go to a tile (onto a wall or tower, for archers), or go after one raider. */
@@ -207,6 +225,8 @@ export interface BattleState {
   stats: BattleStats;
   /** Ladders raised (missing in saves from before M6). */
   ladders?: Ladder[];
+  /** The march in (missing in saves from before it, which skip it). */
+  march?: March;
 }
 
 export type Outcome = 'repelled' | 'plundered' | 'held';
@@ -468,6 +488,78 @@ function edgeTiles(map: TerrainMap, edge?: Edge): number[] {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The march in.
+
+/** The way into the map from each edge, in tiles. */
+const EDGE_INWARD: Record<Edge, [number, number]> = {
+  'north-west': [1, 0],
+  'north-east': [0, 1],
+  'south-east': [-1, 0],
+  'south-west': [0, -1],
+};
+
+/**
+ * Places in the rows for `n` marchers, front row first: each row holds a different number (so the
+ * march doesn't look drilled), centred, with a little stagger. `back` is tiles behind the front row,
+ * `across` tiles to the side of the centre line.
+ */
+export function marchSlots(rng: Rng, n: number): { back: number; across: number }[] {
+  const { rowMin, rowMax, colGap, rowGap } = RAIDS.march;
+  const out: { back: number; across: number }[] = [];
+  let row = 0;
+  let last = 0;
+  while (out.length < n) {
+    let size = rng.int(rowMin, rowMax);
+    if (size === last && rowMax > rowMin) size = size === rowMax ? size - 1 : size + 1;
+    last = size;
+    size = Math.min(size, n - out.length);
+    const shift = (rng.next() - 0.5) * colGap * 0.6;
+    for (let i = 0; i < size; i++)
+      out.push({ back: row * rowGap + (rng.next() - 0.5) * 0.25, across: (i - (size - 1) / 2) * colGap + shift });
+    row++;
+  }
+  return out;
+}
+
+/**
+ * Where a place in the rows is on the map: `back` tiles behind the front centre along the way it
+ * has come, and `across` tiles to the side of that way.
+ */
+export function slotPoint(m: March, sl: { back: number; across: number }): { x: number; y: number } {
+  const at = (d: number): { x: number; y: number } => {
+    let px = m.x;
+    let py = m.y;
+    let left = d;
+    for (let i = 0; i + 1 < m.trail.length; i += 2) {
+      const qx = m.trail[i] as number;
+      const qy = m.trail[i + 1] as number;
+      const seg = Math.hypot(qx - px, qy - py);
+      if (seg >= left && seg > 1e-9) return { x: px + ((qx - px) * left) / seg, y: py + ((qy - py) * left) / seg };
+      left -= seg;
+      px = qx;
+      py = qy;
+    }
+    // Beyond the end of the trail: straight on back the way it faced.
+    return { x: px - m.hx * left, y: py - m.hy * left };
+  };
+  const p = at(Math.max(0, sl.back));
+  // The way the rows face here: along the trail over a tile or so, so a zigzag doesn't jolt them.
+  const ahead = at(Math.max(0, sl.back - 0.6));
+  const behind = at(sl.back + 0.6);
+  let fx = ahead.x - behind.x;
+  let fy = ahead.y - behind.y;
+  const f = Math.hypot(fx, fy);
+  if (f < 1e-6) {
+    fx = m.hx;
+    fy = m.hy;
+  } else {
+    fx /= f;
+    fy /= f;
+  }
+  return { x: p.x - fy * sl.across, y: p.y + fx * sl.across };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Starting a battle.
 
 function zeroUnits(): Record<UnitType, number> {
@@ -668,14 +760,38 @@ export function startBattle(s: SimState, rng: Rng): BattleState {
   const cy = (centre - cx) / map.width;
   const near = [...spawn].sort((a, c) => tileDist(map, a, cx, cy) - tileDist(map, c, cx, cy) || a - c).slice(0, 8);
   const strength = raidStrength(b.raid);
-  let k = 0;
-  for (const t of RAIDER_TYPES)
-    for (let i = 0; i < strength[t]; i++, k++) {
-      const tile = near[k % Math.max(1, near.length)] ?? centre;
-      const u = newUnit(b, rng, t, tile % map.width, Math.floor(tile / map.width));
-      if (t === 'ladderCrew') u.ladder = true;
-      b.stats.start[t]++;
+  // Swordsmen in the front rows, then the ladders and sappers, archers at the back.
+  const marchOrder: RaiderType[] = ['raider', 'ladderCrew', 'sapper', 'raiderArcher'];
+  const types = marchOrder.flatMap((t) => new Array<RaiderType>(strength[t]).fill(t));
+  const slots = marchSlots(rng, types.length);
+  const [hx, hy] = EDGE_INWARD[b.from];
+  const depth = slots.reduce((m, sl) => Math.max(m, sl.back), 0);
+  // The front row starts far enough in for the back row to stand on the edge.
+  const march: March = { x: cx + hx * depth, y: cy + hy * depth, hx, hy, trail: [], done: false };
+  // As if they had come in straight from the edge.
+  for (let d = 0.5; d <= depth + 2; d += 0.5) march.trail.push(march.x - hx * d, march.y - hy * d);
+  const ground = (x: number, y: number) => {
+    const tx = Math.round(x);
+    const ty = Math.round(y);
+    return inBounds(map, tx, ty) && Number.isFinite(der.attack[ty * map.width + tx]) && !b.pieces[der.occupant[ty * map.width + tx] as number]?.standing;
+  };
+  types.forEach((t, k) => {
+    const sl = slots[k] as { back: number; across: number };
+    const at = slotPoint(march, sl);
+    const tile = near[k % Math.max(1, near.length)] ?? centre;
+    const u = ground(at.x, at.y)
+      ? newUnit(b, rng, t, Math.round(at.x), Math.round(at.y))
+      : newUnit(b, rng, t, tile % map.width, Math.floor(tile / map.width));
+    if (ground(at.x, at.y)) {
+      u.x = at.x;
+      u.y = at.y;
     }
+    u.slot = sl;
+    if (t === 'ladderCrew') u.ladder = true;
+    b.stats.start[t]++;
+  });
+  // Rarely worth it for a handful; a few men just walk in together.
+  if (types.length > 2) b.march = march;
   if (!near.some((i) => Number.isFinite(der.attack[i]))) {
     b.phase = 'retreat';
     b.why = 'no way';
@@ -819,6 +935,7 @@ export function orderUnits(s: SimState, ids: readonly number[], order: Order): n
       if (p?.standing && !UNITS[u.type].bow) continue;
       if (!p?.standing && terrainAt(map, order.tile % map.width, Math.floor(order.tile / map.width)).moveCost === null) continue;
     }
+    if (u.home === undefined || u.home === null) u.home = u.post;
     u.order = { ...order };
     u.path = [];
     u.retry = 0;
@@ -826,6 +943,33 @@ export function orderUnits(s: SimState, ids: readonly number[], order: Order): n
     taken++;
   }
   return taken;
+}
+
+/**
+ * Commander mode: take back the orders given to these soldiers. Each goes back to the post it held
+ * before its first order (walking, or climbing back onto its wall) and fights from there as it
+ * would have. Returns how many were sent back.
+ */
+export function releaseUnits(s: SimState, ids: readonly number[]): number {
+  const b = s.defence.battle;
+  if (!b || b.phase !== 'fight') return 0;
+  let n = 0;
+  for (const u of b.units) {
+    if (u.side !== 'defender' || u.hp <= 0 || !ids.includes(u.id)) continue;
+    const home = u.home ?? null;
+    if (home === null && !u.order) continue;
+    u.order = null;
+    u.path = [];
+    u.retry = 0;
+    u.home = null;
+    if (home !== null && home >= 0 && home !== u.post) {
+      // Walked back like any order; arriving makes it the post again.
+      if (orderUnits(s, [u.id], { kind: 'move', tile: home }) === 0) u.post = home;
+      u.home = null;
+    }
+    n++;
+  }
+  return n;
 }
 
 /**
@@ -1118,6 +1262,88 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
   const escaped = new Set<number>();
   const batterers = new Map<number, number>();
   const sappers = new Map<number, number>();
+
+  /** Can a marcher stand at this point: open ground the raiders can walk on, with no piece standing there? */
+  const openGround = (x: number, y: number): boolean => {
+    const tx = Math.round(x);
+    const ty = Math.round(y);
+    if (!inBounds(map, tx, ty)) return false;
+    const i = ty * map.width + tx;
+    return Number.isFinite(der.attack[i] as number) && !pieceAt(i)?.standing && terrainAt(map, tx, ty).moveCost !== null;
+  };
+  const march = b.march;
+  const marching = (u: Unit): boolean => !!march && !march.done && b.phase === 'fight' && !!u.slot && !u.on;
+  if (march && !march.done) {
+    // The front centre walks the raiders' way in; the rows follow it, and break up near the castle.
+    const ranks = attackers.filter(marching);
+    const at = tileOf(map, march.x, march.y);
+    const close = (x: number, y: number, r: number) =>
+      b.targetTiles.some((t) => Math.hypot((t % map.width) - x, Math.floor(t / map.width) - y) <= r) ||
+      Object.values(b.pieces).some((p) => p.standing && Math.hypot(p.x - x, p.y - y) <= r);
+    const next = downhill(map, der.attack, at, der.attackWalk);
+    if (ranks.length === 0 || b.phase !== 'fight' || seconds > RAIDS.march.maxSeconds || next === null || close(march.x, march.y, RAIDS.march.breakAt)) march.done = true;
+    else {
+      // Wait for stragglers, but not for anyone whose place is in water or rough ground they can't stand on.
+      let lag = 0;
+      let counted = 0;
+      for (const u of ranks) {
+        const p = slotPoint(march, u.slot as { back: number; across: number });
+        if (!openGround(p.x, p.y)) continue;
+        lag += Math.hypot(p.x - u.x, p.y - u.y);
+        counted++;
+      }
+      if (counted === 0 || lag / counted <= RAIDS.march.lagWait) {
+        const nx = next % map.width;
+        const ny = (next - nx) / map.width;
+        const dx = nx - march.x;
+        const dy = ny - march.y;
+        const d = Math.hypot(dx, dy);
+        const pace = (RAIDS.march.pace * ranks.reduce((t, u) => t + UNITS[u.type].speed, 0)) / ranks.length;
+        if (d > 1e-6) {
+          const k = Math.min(1, (pace * DT) / d);
+          // Leave a trail for the rows behind to follow, a point every quarter tile or so.
+          const tx = march.trail[0] ?? Number.NaN;
+          const ty = march.trail[1] ?? Number.NaN;
+          if (!(Math.hypot(march.x - tx, march.y - ty) < 0.25)) march.trail.unshift(march.x, march.y);
+          march.x += dx * k;
+          march.y += dy * k;
+          // The rows turn slowly to face the way they're going.
+          const hx = march.hx * 0.96 + (dx / d) * 0.04;
+          const hy = march.hy * 0.96 + (dy / d) * 0.04;
+          const h = Math.hypot(hx, hy) || 1;
+          march.hx = hx / h;
+          march.hy = hy / h;
+          // Keep only as much trail as the back row needs.
+          const need = ranks.reduce((m, u) => Math.max(m, (u.slot as { back: number }).back), 0) + 2;
+          let len = Math.hypot((march.trail[0] ?? march.x) - march.x, (march.trail[1] ?? march.y) - march.y);
+          for (let i = 2; i + 1 < march.trail.length; i += 2) {
+            len += Math.hypot((march.trail[i] as number) - (march.trail[i - 2] as number), (march.trail[i + 1] as number) - (march.trail[i - 1] as number));
+            if (len > need) {
+              march.trail.length = i + 2;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+  /** Keep a raider in its place in the rows. False when it should do as usual instead. */
+  const keepRank = (u: Unit, here: number): boolean => {
+    if (!marching(u) || !march) return false;
+    const p = slotPoint(march, u.slot as { back: number; across: number });
+    const tx = p.x + u.ox * 0.3;
+    const ty = p.y + u.oy * 0.3;
+    if (openGround(tx, ty)) {
+      if (Math.hypot(tx - u.x, ty - u.y) < 0.08) return true;
+      move(u, tx, ty, der.attackWalk);
+      if (u.act === 'walk') return true;
+    }
+    // Its place is on rough ground or round a corner: walk on the usual way and catch up later.
+    const step = downhill(map, der.attack, here, der.attackWalk);
+    if (step === null) return false;
+    move(u, (step % map.width) + u.ox, Math.floor(step / map.width) + u.oy, der.attackWalk);
+    return true;
+  };
   for (const u of b.units) {
     if (u.hp <= 0) continue;
     u.cooldown = Math.max(0, u.cooldown - DT);
@@ -1226,9 +1452,11 @@ export function stepBattle(s: SimState, rng: Rng): TickResult {
       strike(u, close);
       continue;
     }
+    const near = nearest(u, defenders, (f, d) => !f.on && d <= COMBAT.raiderAggro && clearWalk(map, here, tileOf(map, f.x, f.y), der.attackWalk));
+    // On the march in, keep in the rows, unless soldiers come at them.
+    if (!near && keepRank(u, here)) continue;
     // Sappers and ladder crews go about their own work, unless soldiers come at them.
     if (siegeWork(u, here)) continue;
-    const near = nearest(u, defenders, (f, d) => !f.on && d <= COMBAT.raiderAggro && clearWalk(map, here, tileOf(map, f.x, f.y), der.attackWalk));
     if (near) {
       move(u, near.x, near.y, der.attackWalk);
       continue;
