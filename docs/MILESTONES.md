@@ -203,6 +203,21 @@ Notes from playing M6. None is built yet.
 - Suggested slot: after M7, as a small UI and combat follow-up (`src/ui/`, the raid spawn in `src/sim/battle.ts`), unless the playtester wants it first.
 - **Done before M7 (2026-11-02)**, at the playtester's choice; see the progress log. The sapper check needs a playtest against an unmoated wall.
 
+### Moats that bite, and a way across them (playtest, 2026-11-02)
+Today a wet moat is just shallow water and a dry one a ditch: raiders wade or scramble across at 3× or 2× the walking cost, take no harm, and then batter the wall from inside the moat. Two linked changes; none is built yet.
+
+**1. Crossing a moat costs the raiders.** Wading a wet moat should hurt, not only slow them. Options, roughly from simplest:
+- **A. Impassable wet moats.** Deep enough that nobody crosses on foot; raiders must bridge it (see 2) or go round to a gate or dry stretch. Simple and clear, but makes a full wet ring very strong.
+- **B. Hazards in the water.** Crossing a wet moat tile has a chance to cost a raider HP (sharpened stakes and hidden pits, men in heavy gear going under), rolled on the seeded RNG; a dry moat can be lined with stakes for a smaller chance. Raiders in a moat also fight and batter worse and can't shoot.
+- **C. Kill zone.** Raiders in a moat are easier targets: your archers hit them more often and oil cauldrons reach them, so a moat under a tower with slits is where an assault breaks.
+- Suggested: **B + C** (a hurt, a slowdown and an exposure, but still crossable), with wet moats worse than dry ones. Numbers in `src/data/combat.ts`. A could follow if moats still feel weak.
+
+**2. A moat-breaching unit.** A new raider type, the **faggot carrier** (working name): men carrying big bundles of brushwood or hay bales, who throw them into the moat at its narrowest point opposite where the raiders mean to break in. A few bundles fill a tile and make it a **causeway**: walkable at normal speed, no hazard, and sappers and ladder crews can work from it. Not strictly historical in this form, which is fine.
+- They come from a later raid than sappers (say raid 3), only when the raiders' chosen way in crosses a moat, and they're a priority target for sorties and archers (like sappers).
+- A causeway lasts until after the battle; your diggers clear it as a repair job afterwards (or it could be burnt with oil).
+- Art: carriers with bundles, and filled moat tiles, drawn in code first with painted art later.
+- Suggested slot: with 1, since together they make moats a trade-off rather than a hard wall or a mild slowdown. Either straight after M7, or in M7 if the playtester wants it first.
+
 ## Progress log
 Update as milestones complete.
 
