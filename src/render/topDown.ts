@@ -8,8 +8,8 @@ import { viewAngle } from './iso';
 /** Size of one tile in the top-down view, in world pixels: as wide as an isometric tile, so switching keeps the scale. Tile (x, y) covers [x, x+1) × [y, y+1) times this. */
 export const PLAN_TILE = 64;
 
-/** Tools that place, dig or take off castle pieces: the ones the top-down view is for, so nothing tall hides the tile meant. */
-const PLACING = new Set(['wall', 'tower', 'gatehouse', 'keep', 'moat', 'remove']);
+/** Tools that place, dig, shape the ground or take off castle pieces: the ones the top-down view is for, so nothing tall hides the tile meant. */
+const PLACING = new Set(['wall', 'tower', 'gatehouse', 'keep', 'moat', 'remove', 'raise', 'lower']);
 
 /**
  * Should the top-down view be shown? While placing, digging a moat or removing outside a battle,

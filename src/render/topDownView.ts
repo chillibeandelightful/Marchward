@@ -4,7 +4,7 @@ import { isCauseway, type BattleState } from '../sim/battle';
 import { footprint, isCurtain, linked, pieceAt, type Piece, type PieceSpec, type PlanView } from '../sim/castle';
 import type { Post } from '../sim/defence';
 import { heightAt, NEIGHBOURS, stepBetween, terrainAt, type TerrainMap } from '../sim/terrain';
-import { tinted } from './castleArt';
+import { LOWER_COLOUR, RAISE_COLOUR, tinted } from './castleArt';
 import { foundationOutline } from './foundation';
 import { style, type Palette } from './styles';
 import { shade } from './terrainStyle';
@@ -96,6 +96,23 @@ export class TopDownView {
     const problem = tinted(stone, BAD_TINT, 0.45);
     const curtain = new Set(view.plan.pieces.filter((p) => isCurtain(p.kind)).flatMap((p) => footprint(p).map(([x, y]) => `${x},${y}`)));
     this.curtain = curtain;
+    // Earthworks planned: amber to raise, blue to lower, one chevron per level, as in the normal view.
+    const { map, plan, occupant } = view;
+    for (let i = 0; i < plan.earthworks.length; i++) {
+      const d = plan.earthworks[i] ?? 0;
+      if (d === 0 || occupant[i] || (plan.moats ?? []).includes(i)) continue;
+      const x = i % map.width;
+      const y = (i - x) / map.width;
+      const colour = d > 0 ? RAISE_COLOUR : LOWER_COLOUR;
+      g.rect(x * T + 2, y * T + 2, T - 4, T - 4).fill({ color: colour, alpha: 0.28 }).stroke({ width: 2, color: colour, alpha: 0.9 });
+      const n = Math.min(3, Math.abs(d));
+      const cx = (x + 0.5) * T;
+      for (let k = 0; k < n; k++) {
+        const cy = (y + 0.5) * T + (k - (n - 1) / 2) * 12;
+        const tip = d > 0 ? -7 : 7;
+        g.moveTo(cx - 13, cy - tip / 2).lineTo(cx, cy + tip / 2).lineTo(cx + 13, cy - tip / 2).stroke({ width: 3.5, color: 0x1b1f24, alpha: 0.85, cap: 'round', join: 'round' });
+      }
+    }
     for (const p of view.plan.pieces) {
       if (rubble(p)) {
         for (const [x, y] of footprint(p)) g.rect(x * T + 3, y * T + 3, T - 6, T - 6).fill({ color: RUBBLE, alpha: 0.8 });

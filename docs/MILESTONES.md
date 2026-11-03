@@ -185,6 +185,7 @@ A cauldron shouldn't need a soldier posted to it. Each one comes with one of the
 - **Diagonal walls:** walls can be laid corner to corner as well as edge to edge, so a curtain can run at 45°. Towers, the gatehouse and the keep stay square to the grid. A diagonal pair must still block walking between its corners (no slipping through the gap), and drawing, footings and enclosure need to handle the joins.
 - **Free placement:** walls and towers no longer have to join the existing curtain. A tower can go anywhere, and a lone wall tile can stand on its own. The cost is risk, not a rule: a piece with free ends or no tower nearby is shown as poorly supported before you place it, and it's much more prone to collapse (see *Wall collapse* above, which already weights the chance by free ends and tower spacing). The plan panel keeps warning about a split curtain.
 - Suggested slot: a designer follow-up after the gate fix. The support warning can show from the start; the collapse itself arrives with the wall collapse event in M7.
+- **Free placement done (2026-11-03):** walls, towers and gatehouses no longer have to join the existing curtain; the readout warns when a piece stands apart. Diagonal walls and the collapse risk are still to do.
 
 ### Second camera view from the far side
 Raiders come from any edge, and today you can't see what's going on behind the castle. Add a second fixed view looking from the opposite side, with one key or button to swap between the two. No free rotation and no other angles.
@@ -364,3 +365,9 @@ Update as milestones complete.
 
 ### Playtest fix: Commander view for orders, normal view to watch (2026-11-02)
 - In a Commander battle the top-down view is now for picking soldiers and giving orders: it's used while the game is paused, and the normal view comes back while the battle runs, so it can be watched. A button in the top bar's battle line (**Watch the battle** / **Give orders from above**), or T, switches between them; the choice holds until the next pause or restart. Orders can be given in either view. Outside Commander battles T still turns the plan view off and on for the placing tools.
+
+### Playtest fix: Raise and Lower from above (2026-11-03)
+- The Raise and Lower tools switch to the top-down plan view, like the other placing tools, so tiles behind hills and pieces can be picked. Planned earthworks show there as amber (raise) or blue (lower) tiles with one chevron per level, as in the normal view.
+
+### Playtest fix: free-standing walls, towers and gatehouses (2026-11-03)
+- The rule that new walls, towers and gatehouses must join the walls already planned is gone (`checkPlacement` in `src/sim/castle.ts`), so a second ring, an outwork or a lone tower can be started anywhere. The readout says when a piece stands apart (`standsApart`), and the plan's checks still say when the curtain is in more than one part or doesn't enclose the keep. Cliffs, free ground, foundations and the gate passage rules are unchanged.

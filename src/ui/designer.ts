@@ -21,6 +21,7 @@ import {
   placePieces,
   removePieceAt,
   shapeEarth,
+  standsApart,
   toggleExtra,
   unmarkMoat,
   type Axis,
@@ -239,6 +240,18 @@ export class Designer {
       this.previewCache = specs ? { specs, check: checkPlacement(this.host.base, this.host.plan, specs) } : null;
     }
     return this.previewCache;
+  }
+
+  private apartKey = '';
+  private apartCache = false;
+  /** Would these pieces stand apart from the walls already planned? Cached with the preview. */
+  private apart(specs: readonly PieceSpec[]): boolean {
+    const key = `${this.previewKey}|${this.version}`;
+    if (key !== this.apartKey) {
+      this.apartKey = key;
+      this.apartCache = standsApart(this.host.base, this.host.plan, specs);
+    }
+    return this.apartCache;
   }
 
   private previewKey = '';
@@ -473,6 +486,8 @@ export class Designer {
       const p = this.preview();
       if (p && p.specs.length > 0)
         lines.push(p.check.problem ? { text: `Can't build: ${p.check.problem}`, cls: 'bad' } : { text: 'Click to place', cls: 'good' });
+      if (p && p.specs.length > 0 && !p.check.problem && this.apart(p.specs))
+        lines.push({ text: 'Stands apart from your other walls: fine, but it will need joining up to enclose the keep', cls: 'warn' });
     }
     return lines;
   }
