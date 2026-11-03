@@ -223,3 +223,6 @@ After each milestone, add a section:
 
 ## Playtest fix – Commander view for orders, normal view to watch (2026-11-02)
 **How to test:** in a Commander battle, pause (Space): the view goes top-down so you can pick anyone, even behind walls. Start it again: the normal view comes back to watch. The button at the end of the red battle line in the top bar (or T) switches either way.
+
+## Playtest fix – Raise and Lower from above (2026-11-03)
+**How to test:** press 6 (Raise) or 7 (Lower): the view switches to the flat plan. Click or drag: marked tiles show amber (up) or blue (down) with a chevron per level. Press 1 to go back.

@@ -364,3 +364,6 @@ Update as milestones complete.
 
 ### Playtest fix: Commander view for orders, normal view to watch (2026-11-02)
 - In a Commander battle the top-down view is now for picking soldiers and giving orders: it's used while the game is paused, and the normal view comes back while the battle runs, so it can be watched. A button in the top bar's battle line (**Watch the battle** / **Give orders from above**), or T, switches between them; the choice holds until the next pause or restart. Orders can be given in either view. Outside Commander battles T still turns the plan view off and on for the placing tools.
+
+### Playtest fix: Raise and Lower from above (2026-11-03)
+- The Raise and Lower tools switch to the top-down plan view, like the other placing tools, so tiles behind hills and pieces can be picked. Planned earthworks show there as amber (raise) or blue (lower) tiles with one chevron per level, as in the normal view.

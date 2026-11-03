@@ -26,8 +26,8 @@ import { surfaceLevel, tileCorners, type TileShape } from './tileGeometry';
 
 const BAD_TINT = 0xd8452f;
 const GOOD_TINT = 0x8fe08a;
-const RAISE_COLOUR = 0xf2c14e;
-const LOWER_COLOUR = 0x5fb4ea;
+export const RAISE_COLOUR = 0xf2c14e;
+export const LOWER_COLOUR = 0x5fb4ea;
 const MOAT_COLOUR = 0x3fc1b0;
 
 export function tinted(p: Palette, colour: number, amount: number): Palette {
