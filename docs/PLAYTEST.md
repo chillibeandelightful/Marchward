@@ -226,3 +226,6 @@ After each milestone, add a section:
 
 ## Playtest fix – Raise and Lower from above (2026-11-03)
 **How to test:** press 6 (Raise) or 7 (Lower): the view switches to the flat plan. Click or drag: marked tiles show amber (up) or blue (down) with a chevron per level. Press 1 to go back.
+
+## Playtest fix – Free-standing walls, towers and gatehouses (2026-11-03)
+**How to test:** with some walls already planned, lay a wall, click a tower or place a gatehouse well away from them: it's allowed now, and the readout notes that it stands apart. Join it up to enclose the keep as before.

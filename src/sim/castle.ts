@@ -205,9 +205,33 @@ export interface PlacementCheck {
 
 /**
  * Check a batch of pieces (one click, or one dragged line of wall) against the rules:
- * free ground, foundations, one keep, no wall across a cliff, and new
- * curtain joined to the existing curtain.
+ * free ground, foundations, one keep, and no wall across a cliff. New walls, towers and gatehouses
+ * may stand apart from the existing curtain (see `standsApart`).
  */
+/**
+ * Would these pieces stand apart from the curtain already planned (not joined to it edge to edge,
+ * with no cliff between)? Allowed, but worth saying: a free-standing piece is poorly supported.
+ * False when there is no curtain yet, or the batch has none.
+ */
+export function standsApart(base: TerrainMap, plan: CastlePlan, specs: readonly PieceSpec[]): boolean {
+  const view = viewPlan(base, plan);
+  const curtain = specs.filter((s) => isCurtain(s.kind));
+  if (curtain.length === 0 || !plan.pieces.some((p) => isCurtain(p.kind))) return false;
+  const own = new Set(curtain.flatMap((s) => footprint(s).map(([x, y]) => `${x},${y}`)));
+  return !curtain.some((s) =>
+    footprint(s).some(([sx, sy]) => {
+      // Placed onto a wall (a tower or gatehouse replacing it) counts as joined.
+      const under = pieceAt(view, sx, sy);
+      if (under && isCurtain(under.kind)) return true;
+      return NEIGHBOURS.some(([dx, dy]) => {
+        if (own.has(`${sx + dx},${sy + dy}`)) return false;
+        const other = pieceAt(view, sx + dx, sy + dy);
+        return !!other && isCurtain(other.kind) && joined(view.map, sx, sy, sx + dx, sy + dy);
+      });
+    }),
+  );
+}
+
 export function checkPlacement(base: TerrainMap, plan: CastlePlan, specs: readonly PieceSpec[]): PlacementCheck {
   const view = viewPlan(base, plan);
   const problems: (string | null)[] = specs.map(() => null);
@@ -233,21 +257,6 @@ export function checkPlacement(base: TerrainMap, plan: CastlePlan, specs: readon
     const adjacent = prev && Math.abs(prev.x - s.x) + Math.abs(prev.y - s.y) === 1;
     if (adjacent && !joined(view.map, prev.x, prev.y, s.x, s.y)) set(i, "A wall can't cross a cliff");
   });
-
-  // New curtain must join what's there (if anything is), edge to edge with no cliff between.
-  const hasCurtain = plan.pieces.some((p) => isCurtain(p.kind));
-  const curtain = specs.filter((s) => isCurtain(s.kind));
-  if (hasCurtain && curtain.length > 0 && replaces.length === 0) {
-    const touches = curtain.some((s) =>
-      footprint(s).some(([sx, sy]) =>
-        NEIGHBOURS.some(([dx, dy]) => {
-          const other = pieceAt(view, sx + dx, sy + dy);
-          return !!other && isCurtain(other.kind) && joined(view.map, sx, sy, sx + dx, sy + dy);
-        }),
-      ),
-    );
-    if (!touches) curtain.forEach((s) => set(specs.indexOf(s), 'New walls must join the existing walls'));
-  }
 
   const cost = specs.reduce((sum, s) => addCost(sum, pieceCost(base, s)), zeroCost());
   return { problems, problem: problems.find((p) => p !== null) ?? null, replaces, cost };

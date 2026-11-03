@@ -11,6 +11,7 @@ import {
   pieceCost,
   pieceStats,
   placePieces,
+  standsApart,
   planReport,
   plannedMap,
   removePieceAt,
@@ -88,12 +89,14 @@ describe('placing pieces', () => {
     expect(checkPlacement(map, plan, line([1, 1], [4, 1])).problem).toBeNull();
   });
 
-  it('makes new walls join the existing curtain, but not across a cliff', () => {
+  it('lets new walls stand apart from the existing curtain, but no wall runs across a cliff', () => {
     const map = flatMap(8);
     const plan = createPlan(map);
     placePieces(map, plan, line([1, 1], [3, 1]));
-    expect(checkPlacement(map, plan, line([1, 5], [3, 5])).problem).toMatch(/join/);
+    expect(checkPlacement(map, plan, line([1, 5], [3, 5])).problem).toBeNull();
+    expect(standsApart(map, plan, line([1, 5], [3, 5]))).toBe(true);
     expect(checkPlacement(map, plan, line([4, 1], [4, 4])).problem).toBeNull();
+    expect(standsApart(map, plan, line([4, 1], [4, 4]))).toBe(false);
     map.heights[1 * 8 + 4] = 3; // a cliff right where the new wall would meet the old one
     expect(checkPlacement(map, plan, [wall(4, 1), wall(4, 2)]).problem).not.toBeNull();
   });
@@ -334,5 +337,21 @@ describe('plan in sim state', () => {
     placePieces(sim.map, sim.plan, [{ kind: 'keep', x: 36, y: 34 }]);
     adjustEarthwork(sim.map, sim.plan, 30, 30, 1);
     expect(JSON.parse(JSON.stringify(sim))).toEqual(sim);
+  });
+});
+
+describe('free-standing pieces', () => {
+  it('walls, towers and gatehouses can stand apart from the walls already planned', async () => {
+    const { createSim } = await import('../src/sim/state');
+    const { placePieces: place, standsApart } = await import('../src/sim/castle');
+    const s = createSim(1991);
+    expect(place(s.map, s.plan, [{ kind: 'wall', x: 31, y: 31, thickness: 'standard', height: 'medium' }, { kind: 'wall', x: 32, y: 31, thickness: 'standard', height: 'medium' }]).problem).toBeNull();
+    const lone = [{ kind: 'wall', x: 31, y: 36, thickness: 'standard', height: 'medium' }] as const;
+    expect(standsApart(s.map, s.plan, lone)).toBe(true);
+    expect(place(s.map, s.plan, [...lone]).problem).toBeNull();
+    expect(place(s.map, s.plan, [{ kind: 'tower', x: 38, y: 38, shape: 'square', height: 'medium' }]).problem).toBeNull();
+    // Joined on, or placed onto a wall, isn't apart.
+    expect(standsApart(s.map, s.plan, [{ kind: 'wall', x: 33, y: 31, thickness: 'standard', height: 'medium' }])).toBe(false);
+    expect(standsApart(s.map, s.plan, [{ kind: 'tower', x: 31, y: 31, shape: 'round', height: 'medium' }])).toBe(false);
   });
 });
