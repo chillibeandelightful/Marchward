@@ -24,7 +24,7 @@ Each has a standing value that events change:
 - Each choice can change money, food, workers, faction standing, raid chance, or set story flags.
 - Flags let later events follow up: the outlaw you spared returns, the baron you snubbed withholds troops, the abbot you funded sends masons.
 - Chains run across months and sometimes across sites.
-- Events are data (see `src/data/events/`), with conditions (mode, region, season, flags, standing) and weighted selection.
+- Events are data (see `src/data/events/`), with conditions (mode, region, season, flags, standing) and weighted selection. Follow-ups have weight 0 and only come when an answer sets them in motion (`follow`: which event, and how many months on); a choice can be risky, with a stated chance of a different outcome. Region conditions come with the campaign (M8).
 
 ## Regions (placeholder names)
 Each region gets a terrain character, a difficulty step and a few region-specific event chains.

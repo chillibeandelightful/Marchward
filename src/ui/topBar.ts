@@ -3,6 +3,7 @@ import { dateOf, formatDate } from '../sim/calendar';
 import { efficiency, mouths, totalWorkers } from '../sim/economy';
 import { battleCounts, battleSeconds, deploying } from '../sim/battle';
 import { today } from '../sim/state';
+import { EVENTS_BY_ID } from '../sim/story';
 import { button, crowns, el, setClass, setText } from './dom';
 import { SPEEDS, type GameHost } from './host';
 
@@ -18,6 +19,8 @@ export class TopBar {
   private readonly alertText = el('span');
   /** In a Commander battle: switch between giving orders from above and watching in the normal view. */
   private readonly viewButton: HTMLButtonElement;
+  /** A messenger is waiting: open the letter. */
+  private readonly letterButton: HTMLButtonElement;
 
   constructor(
     root: HTMLElement,
@@ -38,7 +41,9 @@ export class TopBar {
     }
     this.viewButton = button('', () => host.toggleBattleView());
     this.viewButton.className = 'view-toggle';
-    this.alert.append(this.alertText, this.viewButton);
+    this.letterButton = button('', () => host.showMessenger());
+    this.letterButton.className = 'view-toggle';
+    this.alert.append(this.alertText, this.viewButton, this.letterButton);
     root.replaceChildren(row, this.stores, this.alert);
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'Space' || e.target instanceof HTMLInputElement) return;
@@ -96,8 +101,11 @@ export class TopBar {
       setClass(this.alert, 'alert warn');
     } else {
       setText(this.alertText, '');
-      setClass(this.alert, 'alert idle');
+      setClass(this.alert, sim.story.pending ? 'alert warn' : 'alert idle');
     }
+    const letter = sim.story.pending ? EVENTS_BY_ID.get(sim.story.pending.event) : undefined;
+    this.letterButton.hidden = !letter || !!b;
+    setText(this.letterButton, letter ? `✉ A messenger waits: ${letter.title}` : '');
     const view = this.host.battleView;
     this.viewButton.hidden = view === null;
     setText(this.viewButton, view === 'command' ? '👁 Watch the battle (T)' : '⌖ Give orders from above (T)');

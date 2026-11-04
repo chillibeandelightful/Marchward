@@ -56,9 +56,9 @@ export function createDefence(rng: Rng): DefenceState {
   };
 }
 
-/** Pick the next raid's day (never in winter) and direction, `gap` days or so after `day`. */
-export function scheduleRaid(d: DefenceState, rng: Rng, day: number): void {
-  let next = day + rng.int(RAIDS.gap[0], RAIDS.gap[1]);
+/** Pick the next raid's day (never in winter) and direction, `gap` days or so after `day`, times `gapScale` (the borderfolk's mood). */
+export function scheduleRaid(d: DefenceState, rng: Rng, day: number, gapScale = 1): void {
+  let next = day + Math.round(rng.int(RAIDS.gap[0], RAIDS.gap[1]) * gapScale);
   // Raiders sit out the winter; they come some time in the spring instead.
   if (isWinter(next)) {
     while (isWinter(next)) next++;

@@ -1,3 +1,4 @@
+import { crownTaxFactor } from '../sim/story';
 import { ECONOMY, WAGE_LEVELS, WORKER_TYPES, WORKERS, type WageLevel, type WorkerType } from '../data/economy';
 import { isWinter } from '../sim/calendar';
 import {
@@ -128,7 +129,7 @@ export class WorkersPanel {
     setClass(this.standing, e.standing < 40 ? 'bad' : e.standing < 60 ? 'warn' : '');
     setText(
       this.income,
-      `Next spring's taxes: about ${crowns(taxDue(e, this.host.summary.builtLabour))} crowns (more as the castle is built). Autumn harvest dues: about ${crowns(harvestDue(e))} rations.`,
+      `Next spring's taxes: about ${crowns(taxDue(e, this.host.summary.builtLabour, crownTaxFactor(this.host.sim.story)))} crowns (more as the castle is built). Autumn harvest dues: about ${crowns(harvestDue(e))} rations.`,
     );
     const l = e.lastMonth;
     setText(

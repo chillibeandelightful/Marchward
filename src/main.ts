@@ -14,6 +14,8 @@ import { drawBattle } from './render/battleArt';
 import { Commander } from './ui/command';
 import { DefencePanel } from './ui/defencePanel';
 import { ReportView } from './ui/reportView';
+import { MessengerView } from './ui/messenger';
+import { StoryPanel } from './ui/storyPanel';
 import { pieceProgress, summariseWorks, type WorksSummary } from './sim/works';
 import { ProceduralAssets } from './render/assets';
 import { loadPaintedArt, PaintedAssets } from './render/paintedArt';
@@ -57,7 +59,8 @@ async function start(): Promise<void> {
   const toolsEl = document.getElementById('tools');
   const panelEl = document.getElementById('panel');
   const reportEl = document.getElementById('report');
-  if (!host || !topEl || !readoutEl || !toolsEl || !panelEl || !reportEl) throw new Error('Missing page elements');
+  const messengerEl = document.getElementById('messenger');
+  if (!host || !topEl || !readoutEl || !toolsEl || !panelEl || !reportEl || !messengerEl) throw new Error('Missing page elements');
 
   // The look is chosen before anything is drawn, so the land is built once in the right style.
   let look: Look = loadLook();
@@ -85,7 +88,7 @@ async function start(): Promise<void> {
   let summary: WorksSummary = summariseWorks(sim.map, sim.plan, sim.economy, sim.works, 0);
 
   // Changes reported by the sim since the last frame.
-  const pending = { land: new Set<number>(), pieces: false, newDay: false, newMonth: false, battleStarted: false, battleEnded: false };
+  const pending = { land: new Set<number>(), pieces: false, newDay: false, newMonth: false, battleStarted: false, battleEnded: false, messenger: false };
   const note = (e: TickEvents) => {
     for (const t of e.land) pending.land.add(t);
     pending.pieces ||= e.pieces;
@@ -93,13 +96,14 @@ async function start(): Promise<void> {
     pending.newMonth ||= e.newMonth;
     pending.battleStarted ||= e.battleStarted;
     pending.battleEnded ||= e.battleEnded;
+    pending.messenger ||= e.messenger;
     return e;
   };
   const loop = new FixedStepLoop(1000 / simConfig.ticksPerSecond, () => {
     for (let i = 0; i < speed; i++) {
       const e = note(stepSim(sim));
-      // Stop at the start and end of a battle, so neither goes by unseen.
-      if (e.battleStarted || e.battleEnded) {
+      // Stop at the start and end of a battle, and when a messenger comes, so none goes by unseen.
+      if (e.battleStarted || e.battleEnded || e.messenger) {
         speed = 0;
         break;
       }
@@ -193,6 +197,7 @@ async function start(): Promise<void> {
       { id: 'works', name: 'Building' },
       { id: 'workers', name: 'Workers' },
       { id: 'defence', name: 'Defence' },
+      { id: 'story', name: 'Story' },
       { id: 'reports', name: 'Reports' },
       { id: 'game', name: 'Game' },
     ] as const,
@@ -266,13 +271,17 @@ async function start(): Promise<void> {
       sim = state;
       restart();
     },
-    newGame() {
-      sim = createSim(seed);
+    newGame(mode) {
+      sim = createSim(seed, undefined, mode);
       restart();
+    },
+    showMessenger() {
+      messengerView.show();
     },
   };
   const restart = () => {
     speed = 0;
+    messengerView.close();
     summary = summariseWorks(sim.map, sim.plan, sim.economy, sim.works, today(sim));
     refresh('all');
   };
@@ -351,6 +360,15 @@ async function start(): Promise<void> {
     },
   );
   const reportView = new ReportView(reportEl);
+  const storyPanel = new StoryPanel(tabs.pages.story, game);
+  const messengerView = new MessengerView(
+    messengerEl,
+    () => sim,
+    () => {
+      storyPanel.update();
+      summary = summariseWorks(sim.map, sim.plan, sim.economy, sim.works, today(sim));
+    },
+  );
   const defencePanel = new DefencePanel(tabs.pages.defence, game, {
     postTroops: () => designer.setTool('troops'),
     raidNow: () => note(raidNow(sim)),
@@ -578,8 +596,15 @@ async function start(): Promise<void> {
       gamePanel.refresh();
       pending.newMonth = false;
     }
+    if (pending.messenger) {
+      pending.messenger = false;
+      speed = 0;
+      // A raid that starts the same day comes first; the letter waits in the top bar meanwhile.
+      if (!sim.defence.battle) messengerView.show();
+    }
     if (pending.battleStarted) {
       pending.battleStarted = false;
+      messengerView.close();
       speed = 0;
       tabs.show('defence');
       refresh([]);
@@ -701,6 +726,9 @@ async function start(): Promise<void> {
         break;
       case 'reports':
         reportsPanel.update();
+        break;
+      case 'story':
+        storyPanel.update();
         break;
     }
 

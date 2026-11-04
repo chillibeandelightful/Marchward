@@ -2,6 +2,7 @@ import { SIEGE } from '../data/combat';
 import type { BattleReport, ReportLine } from './battle';
 import { footprint } from './castle';
 import { addReport, scheduleRaid, type Edge } from './defence';
+import { borderRaidGapFactor } from './story';
 import type { Rng } from './rng';
 import type { SimState } from './state';
 import { inBounds, terrainAt } from './terrain';
@@ -191,6 +192,6 @@ function endSiege(state: SimState, rng: Rng, day: number, how: SiegeEnd): Battle
   };
   state.defence.siege = null;
   addReport(state.defence, report);
-  scheduleRaid(state.defence, rng, day);
+  scheduleRaid(state.defence, rng, day, borderRaidGapFactor(state.story));
   return report;
 }

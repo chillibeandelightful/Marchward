@@ -229,3 +229,17 @@ After each milestone, add a section:
 
 ## Playtest fix – Free-standing walls, towers and gatehouses (2026-11-03)
 **How to test:** with some walls already planned, lay a wall, click a tower or place a gatehouse well away from them: it's allowed now, and the readout notes that it stands apart. Join it up to enclose the keep as before.
+
+## M7 – Messengers and story (2026-11-04)
+**Link:** https://chillibeandelightful.github.io/Marchward/ (live once this is merged and the deploy on `main` finishes; hard-refresh with Ctrl+Shift+R if you still see the old one)
+**How to test:**
+- **Pick a story:** Game tab → **New game** → **New Chronicle game** or **New Legend game**. (Old saves load as Chronicle.)
+- **The first messenger:** plan and hire as usual and run the clock. On 1 April (and most months after) the game pauses and a letter opens: who it's from, what they want, and three answers with what each does at once. Risky answers say so. Press 1, 2 or 3, or click.
+- **The hall picture (test):** when the flour thief comes up (the camp reeve brings him), the letter opens with a pixel-art picture of the warden glowering on his seat and the reeve holding the stolen flour. Only this one is drawn so far: does the look work, and is it worth drawing the rest (a soldier, a priest, a herald, a vagabond and so on)?
+- **Putting it aside:** press Esc on a letter, then run the clock. The top bar shows **✉ A messenger waits**; click it (or the Story tab's **Read the message**) to open it again. Leave it until the next month and the default answer shown at the bottom of the letter is taken for you.
+- **Standing:** open the **Story** tab (in Classic, the sealed-letter icon). Each faction has a bar and a line saying what it does right now. Answer a few messengers and watch them move; spring taxes, soldier hiring and the time between raids change with them.
+- **Consequences:** spare the flour thief, take the baron's daughter for your nephew, or promise the abbot his chapel, then play on for some months: the story comes back to you. The chronicle at the bottom of the Story tab lists every answer and what came of it.
+- **Legend:** in a Legend game the diggers find humming stones instead of plain old ones, and stranger messengers turn up.
+- **The questions:** are the choices interesting, with no obvious right answer? Do consequences show up later, and do you notice them? Is a messenger most months too many, or too few? Are the numbers on each answer enough to decide by?
+**Known issues:** the first batch is about 25 events, so in a long game the one-offs start repeating (with a cooldown of 6 to 12 months). Legend creatures don't appear in battle yet. Regions and sites, which the design ties some chains to, come with the campaign in M8.
+

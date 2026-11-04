@@ -8,7 +8,7 @@ import { hash2 } from '../sim/noise';
 type Rect = readonly [x: number, y: number, w: number, h: number];
 type Layer = readonly [colour: string, rects: readonly Rect[]];
 
-export type IconName = 'build' | 'workers' | 'timber' | 'stone' | 'defence' | 'standing' | 'hiring' | 'plan' | 'reports' | 'save';
+export type IconName = 'build' | 'workers' | 'timber' | 'stone' | 'defence' | 'standing' | 'hiring' | 'plan' | 'story' | 'reports' | 'save';
 
 const OUTLINE = '#15110d';
 
@@ -69,6 +69,13 @@ const ICONS: Record<IconName, readonly Layer[]> = {
     ['#d9c49a', [[3, 3, 10, 10]]],
     ['#a88a5a', [[2, 2, 2, 12], [12, 2, 2, 12]]],
     ['#5a4024', [[5, 5, 5, 1], [5, 5, 1, 5], [5, 9, 6, 1], [9, 5, 1, 3], [10, 7, 1, 3]]],
+  ],
+  // A folded letter with a red wax seal.
+  story: [
+    ['#e3d3a8', [[2, 4, 12, 9]]],
+    ['#b8a273', [[2, 4, 1, 9], [13, 4, 1, 9], [2, 12, 12, 1], [3, 5, 2, 1], [5, 6, 2, 1], [7, 7, 2, 1], [9, 6, 2, 1], [11, 5, 2, 1]]],
+    ['#b3271f', [[7, 8, 2, 2]]],
+    ['#7e1a14', [[8, 9, 1, 1]]],
   ],
   // A bar chart.
   reports: [

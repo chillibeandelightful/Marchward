@@ -62,6 +62,7 @@ export class GamePanel {
   private readonly notice = el('div');
   private readonly newButton: HTMLButtonElement;
   private newArmed = false;
+  private readonly newChoice = el('div');
 
   private readonly lookRows: { b: HTMLButtonElement; on: (l: Look) => boolean }[] = [];
 
@@ -86,19 +87,32 @@ export class GamePanel {
       button('Load autosave', () => this.load('autosave')),
     );
     this.newButton = button('New game', () => {
-      if (!this.newArmed) {
-        this.newArmed = true;
-        setText(this.newButton, 'Click again to start over (unsaved progress is lost)');
-        setClass(this.newButton, 'active');
-        return;
-      }
-      this.newArmed = false;
-      setText(this.newButton, 'New game');
-      setClass(this.newButton, '');
-      host.newGame();
-      this.say('Started a new game.', false);
+      this.newArmed = !this.newArmed;
+      setText(this.newButton, this.newArmed ? 'Keep playing this game' : 'New game');
+      setClass(this.newButton, this.newArmed ? 'active' : '');
+      this.newChoice.hidden = !this.newArmed;
     });
-    s.append(this.newButton, this.notice);
+    this.newChoice.hidden = true;
+    this.newChoice.append(el('div', 'dim', 'Start over? Unsaved progress is lost. Pick how the story is told:'));
+    for (const [mode, label, note] of [
+      ['chronicle', 'Chronicle', 'Grounded frontier politics. No magic.'],
+      ['legend', 'Legend', 'The same frontier, but the old stories are true.'],
+    ] as const) {
+      const row = el('div', 'option-row');
+      row.append(
+        button(`New ${label} game`, () => {
+          this.newArmed = false;
+          setText(this.newButton, 'New game');
+          setClass(this.newButton, '');
+          this.newChoice.hidden = true;
+          host.newGame(mode);
+          this.say(`Started a new ${label} game.`, false);
+        }),
+        el('span', 'dim', note),
+      );
+      this.newChoice.append(row);
+    }
+    s.append(this.newButton, this.newChoice, this.notice);
     const keys = el('section', 'classic-only');
     keys.append(el('strong', undefined, 'Keys'));
     for (const line of KEYS_HELP) keys.append(el('div', 'dim', line));
