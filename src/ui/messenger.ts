@@ -2,6 +2,7 @@ import { formatDate } from '../sim/calendar';
 import { cannotChoose, describeEffects, EVENTS_BY_ID } from '../sim/story';
 import { answerMessenger, type SimState } from '../sim/state';
 import { button, el } from './dom';
+import { hallScene } from './hallScene';
 
 /**
  * The messenger's letter, over the middle of the map: who it's from, what they want, and three
@@ -48,7 +49,11 @@ export class MessengerView {
     const p = s.story.pending;
     const ev = p ? EVENTS_BY_ID.get(p.event) : undefined;
     if (!p || !ev) return this.close();
+    const scene = hallScene(ev.figure);
+    if (scene) scene.className = 'scene';
+    this.root.classList.toggle('with-scene', !!scene);
     const parts: HTMLElement[] = [
+      ...(scene ? [scene] : []),
       el('h2', undefined, ev.title),
       el('div', 'dim', `${ev.from} · ${formatDate(p.day)}`),
       el('p', 'letter', ev.text),

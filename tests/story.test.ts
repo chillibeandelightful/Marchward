@@ -9,6 +9,7 @@ import { Rng } from '../src/sim/rng';
 import { fromSave } from '../src/sim/save';
 import { answerMessenger, createSim, today, type SimState } from '../src/sim/state';
 import { borderRaidGapFactor, cannotChoose, crownTaxFactor, eligible, EVENTS_BY_ID } from '../src/sim/story';
+import { hasFigure } from '../src/ui/hallScene';
 import { days } from './helpers';
 
 const MONTH = CALENDAR.daysPerMonth;
@@ -47,6 +48,11 @@ describe('story events (data)', () => {
     for (const ev of STORY_EVENTS) for (const f of ev.when?.flags ?? []) expect(set.has(f), `${ev.id} waits on ${f}`).toBe(true);
     // Every follow-up (weight 0) is reachable from some choice.
     for (const ev of STORY_EVENTS.filter((e) => e.weight === 0)) expect(follows, ev.id).toContain(ev.id);
+  });
+
+  it('names only messenger figures that have been drawn for the hall picture', () => {
+    for (const ev of STORY_EVENTS) if (ev.figure) expect(hasFigure(ev.figure), `${ev.id}: ${ev.figure}`).toBe(true);
+    expect(EVENTS_BY_ID.get('outlaw_caught')?.figure).toBe('reeve');
   });
 
   it('includes the first chains for M7, in both modes, and Legend-only events', () => {

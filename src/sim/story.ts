@@ -59,6 +59,8 @@ export interface StoryEvent {
   title: string;
   /** Who brings the message. */
   from: string;
+  /** The messenger's figure in the hall picture shown above the letter, if one has been drawn (see `src/ui/hallScene.ts`). */
+  figure?: string;
   text: string;
   when?: When;
   /** Relative chance of being picked from the pool. Follow-ups usually have 0: they only come when set in motion. */

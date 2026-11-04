@@ -186,6 +186,8 @@
       body.classic .dialog .bad { color: #8a1d12; }
       body.classic .dialog .warn { color: #7a5410; }
       body.classic .dialog section { border-top-color: #8a7350; }
+      .dialog.with-scene { width: min(640px, calc(100% - 40px)); }
+      .dialog canvas.scene { display: block; width: 100%; aspect-ratio: 2 / 1; image-rendering: pixelated; margin-bottom: 10px; border: 2px solid #15110d; box-sizing: border-box; }
       .dialog .letter { margin: 8px 0 4px; font-size: 14px; }
       .dialog .choice button { display: block; width: 100%; text-align: left; font-size: 13px; font-weight: 600; padding: 6px 10px; }
       .dialog .choice button:disabled { opacity: 0.5; cursor: default; }
