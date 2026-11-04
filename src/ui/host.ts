@@ -1,4 +1,5 @@
 import type { SimState } from '../sim/state';
+import type { StoryMode } from '../sim/story';
 import type { WorksSummary } from '../sim/works';
 
 /** What the panels need from the game. The sim object is replaced when a game is loaded, so always read it through here. */
@@ -17,7 +18,9 @@ export interface GameHost {
   toggleBattleView(): void;
   /** Replace the running game with a loaded one. */
   load(state: SimState): void;
-  newGame(): void;
+  newGame(mode: StoryMode): void;
+  /** Open the waiting messenger's letter. */
+  showMessenger(): void;
 }
 
 export const SPEEDS = [1, 2, 4] as const;

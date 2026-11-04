@@ -13,6 +13,7 @@ const ICONS: readonly { name: IconName; tab: string; section?: string; title: st
   { name: 'standing', tab: 'workers', section: 'Money', title: "Standing: money, taxes, the levy and your people's standing" },
   { name: 'hiring', tab: 'defence', section: 'Garrison', title: 'Hiring: hire soldiers for the garrison' },
   { name: 'plan', tab: 'plan', title: 'Plan: design the castle' },
+  { name: 'story', tab: 'story', title: 'Story: the messenger, standing with each faction, and the chronicle' },
   { name: 'reports', tab: 'reports', title: 'Reports: graphs and the log' },
   { name: 'save', tab: 'game', title: 'Save, load, and the look of the game' },
 ];

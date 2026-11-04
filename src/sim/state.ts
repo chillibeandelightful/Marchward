@@ -11,6 +11,7 @@ import { RAIDS } from '../data/combat';
 import { buildSite, type Point, type SiteDef } from './site';
 import type { TerrainMap } from './terrain';
 import { createWorks, summariseWorks, workDay, type WorksState } from './works';
+import { baronHiringFactor, borderRaidGapFactor, choose, createStory, crownTaxFactor, monthlyMessenger, type StoryMode, type StoryState } from './story';
 
 /** One point on the report graphs. */
 export interface Sample {
@@ -46,6 +47,8 @@ export interface SimState {
   works: WorksState;
   /** Raids, the garrison's posts, and any battle being fought. */
   defence: DefenceState;
+  /** Messengers, standing with the factions, and the story so far. */
+  story: StoryState;
   history: Sample[];
   /** Recent happenings, newest last. */
   log: LogEntry[];
@@ -65,11 +68,13 @@ export interface TickEvents {
   battleEnded: boolean;
   /** A battle is being fought (the calendar stands still meanwhile). */
   battle: boolean;
+  /** A messenger arrived and waits for an answer. */
+  messenger: boolean;
 }
 
 const LOG_LENGTH = 40;
 
-export function createSim(seed: number, site: SiteDef = kestrelFord): SimState {
+export function createSim(seed: number, site: SiteDef = kestrelFord, mode: StoryMode = 'chronicle'): SimState {
   const rng = new Rng(seed);
   const map = buildSite(site);
   const defence = createDefence(rng);
@@ -85,6 +90,7 @@ export function createSim(seed: number, site: SiteDef = kestrelFord): SimState {
     economy: createEconomy(),
     works: createWorks(),
     defence,
+    story: createStory(seed, mode),
     history: [],
     log: [{ day: 0, text: 'You arrive at the site with a purse from the crown. Plan the castle, then hire workers.' }],
   };
@@ -101,7 +107,7 @@ export function addLog(state: SimState, text: string): void {
 
 /** Advance the simulation by exactly one fixed tick. Everything that happens, happens at the start of a day. */
 export function stepSim(state: SimState): TickEvents {
-  const events: TickEvents = { newDay: false, newMonth: false, land: [], pieces: false, raidWarning: false, battleStarted: false, battleEnded: false, battle: false };
+  const events: TickEvents = { newDay: false, newMonth: false, land: [], pieces: false, raidWarning: false, battleStarted: false, battleEnded: false, battle: false, messenger: false };
   if (state.defence.battle) {
     stepBattleTick(state, events);
     return events;
@@ -121,7 +127,7 @@ export function stepSim(state: SimState): TickEvents {
     if (levy > 0) addLog(state, `Levy raised: +${levy} crowns. People grumble (standing ${Math.round(e.standing)}).`);
     if (date.month === 0 && date.year > 1) {
       const built = summariseWorks(state.map, state.plan, e, state.works, day).builtLabour;
-      addLog(state, `Spring taxes collected: +${collectTaxes(e, built)} crowns.`);
+      addLog(state, `Spring taxes collected: +${collectTaxes(e, built, crownTaxFactor(state.story))} crowns.`);
     }
     if (date.season === 'autumn' && CALENDAR.seasons[date.month - 1] !== 'autumn') {
       if (state.defence.siege) addLog(state, 'No harvest dues this year: the besiegers sit on the fields.');
@@ -130,10 +136,13 @@ export function stepSim(state: SimState): TickEvents {
     if (date.season === 'winter' && CALENDAR.seasons[date.month - 1] !== 'winter')
       addLog(state, 'Winter: building stops until spring. Workers are kept on at half pay.');
     if (date.month === 0 && date.year > 1) addLog(state, 'Spring: building starts again.');
+    const story = monthlyMessenger(state, day);
+    for (const line of story.log) addLog(state, line);
+    events.messenger = story.arrived;
   }
 
   // Nobody new gets through a siege.
-  if (!state.defence.siege) hire(e, rng, winter);
+  if (!state.defence.siege) hire(e, rng, winter, baronHiringFactor(state.story));
   const lowFood = (food: number) => food < mouths(e) * ECONOMY.rationsPerWorker * ECONOMY.lowFoodDays;
   const wasLow = lowFood(e.stores.food);
   const left = payAndFeed(e, rng, winter);
@@ -239,7 +248,7 @@ function stepBattleTick(state: SimState, events: TickEvents): void {
     }
     addReport(state.defence, report);
     addLog(state, report.headline);
-    if (!siege) scheduleRaid(state.defence, rng, day);
+    if (!siege) scheduleRaid(state.defence, rng, day, borderRaidGapFactor(state.story));
     events.battleEnded = true;
     events.pieces = true;
   }
@@ -248,12 +257,21 @@ function stepBattleTick(state: SimState, events: TickEvents): void {
 
 /** Bring the next raid on now, without waiting for it (for playtesting the defences). */
 export function raidNow(state: SimState): TickEvents {
-  const events: TickEvents = { newDay: false, newMonth: false, land: [], pieces: true, raidWarning: false, battleStarted: false, battleEnded: false, battle: false };
+  const events: TickEvents = { newDay: false, newMonth: false, land: [], pieces: true, raidWarning: false, battleStarted: false, battleEnded: false, battle: false, messenger: false };
   if (state.defence.battle || state.defence.siege) return events;
   const rng = new Rng(state.rngState);
   beginBattle(state, rng, events);
   state.rngState = rng.getState();
   return events;
+}
+
+/** Answer the messenger who is waiting, with choice 0, 1 or 2. Returns a problem, or null if answered. */
+export function answerMessenger(state: SimState, index: number): string | null {
+  if (!state.story.pending) return 'No messenger is waiting.';
+  const line = choose(state, index, today(state));
+  if (!line) return 'That choice costs more than is in the stores.';
+  addLog(state, line);
+  return null;
 }
 
 /** Buy one lot of supplies, unless besiegers are camped outside. Returns a problem, or null if bought. */

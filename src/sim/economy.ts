@@ -128,7 +128,8 @@ export function setWanted(e: EconomyState, type: WorkerType, n: number): void {
 }
 
 /** New workers arrive over time, while fewer are on site than wanted. Nobody comes while wages or food run short. */
-export function hire(e: EconomyState, rng: Rng, winter: boolean): void {
+/** `troopScale` multiplies how fast soldiers come (the barons' goodwill). */
+export function hire(e: EconomyState, rng: Rng, winter: boolean, troopScale = 1): void {
   if (e.hungry || e.unpaid) return;
   for (const t of WORKER_TYPES) {
     const short = e.wanted[t] - e.workers[t];
@@ -140,7 +141,7 @@ export function hire(e: EconomyState, rng: Rng, winter: boolean): void {
   for (const t of TROOP_TYPES) {
     const short = e.troopsWanted[t] - e.troops[t];
     if (short <= 0) continue;
-    const expected = TROOPS[t].hireRate * WAGE_LEVELS[e.wage].hiring * (0.5 + e.standing / 100);
+    const expected = TROOPS[t].hireRate * WAGE_LEVELS[e.wage].hiring * (0.5 + e.standing / 100) * troopScale;
     const arrivals = Math.floor(expected) + (rng.next() < expected % 1 ? 1 : 0);
     e.troops[t] += Math.min(short, arrivals);
   }
@@ -207,14 +208,14 @@ export function newMonth(e: EconomyState): number {
   return ECONOMY.levy;
 }
 
-/** Spring taxes, rising with standing and with the worker-days of castle pieces finished. */
-export function taxDue(e: EconomyState, builtLabour: number): number {
+/** Spring taxes, rising with standing and with the worker-days of castle pieces finished, times `crown` (the crown's goodwill). */
+export function taxDue(e: EconomyState, builtLabour: number, crown = 1): number {
   const castle = Math.min(1, builtLabour / ECONOMY.taxFullCastle);
-  return Math.round((ECONOMY.taxBase + ECONOMY.taxPerCompletion * castle) * (e.standing / 100));
+  return Math.round((ECONOMY.taxBase + ECONOMY.taxPerCompletion * castle) * (e.standing / 100) * crown);
 }
 
-export function collectTaxes(e: EconomyState, builtLabour: number): number {
-  const due = taxDue(e, builtLabour);
+export function collectTaxes(e: EconomyState, builtLabour: number, crown = 1): number {
+  const due = taxDue(e, builtLabour, crown);
   e.stores.crowns += due;
   e.thisMonth.taxes += due;
   return due;

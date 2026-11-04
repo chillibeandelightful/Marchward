@@ -2,12 +2,13 @@ import { CALENDAR } from '../data/economy';
 import { isWinter } from './calendar';
 import { createDefence } from './defence';
 import { createEconomy, startingTroops } from './economy';
+import { createStory } from './story';
 import { Rng } from './rng';
 import type { SimState } from './state';
 import { createWorks } from './works';
 
 /** Bump when the shape of SimState changes, and add a step to MIGRATIONS that upgrades the old shape. */
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export interface SaveFile {
   version: number;
@@ -63,6 +64,8 @@ const MIGRATIONS: Record<number, (state: Record<string, unknown>) => Record<stri
     }
     return s;
   },
+  // Version 6 (M7): messengers and standing with the factions. An older game is told as a Chronicle.
+  5: (s) => ({ ...s, story: s.story ?? createStory(Number(s.seed) || 1, 'chronicle') }),
 };
 
 export function toSave(state: SimState, savedAt: number): string {
