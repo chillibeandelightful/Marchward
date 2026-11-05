@@ -12,6 +12,7 @@ export const CHRONICLE_EVENTS: readonly StoryEvent[] = [
     title: 'The flour thief',
     from: 'Your camp reeve',
     figure: 'reeve',
+    arrival: 'Your camp reeve comes before you with a sack of flour, and asks what is to be done with the thief.',
     text: "The carters caught a man with a sack of the camp's flour, and two more sacks hidden in the ditch. He gives his name as Jory Tallow, says the forest feeds nobody in spring, and doesn't look sorry. The camp wants to see what the warden will do.",
     when: { fromMonth: 1 },
     weight: 4,

@@ -52,8 +52,10 @@ export class MessengerView {
     const scene = hallScene(ev.figure);
     if (scene) scene.className = 'scene';
     this.root.classList.toggle('with-scene', !!scene);
+    const picture = el('div', 'scene-frame');
+    if (scene) picture.append(scene, el('div', 'scene-caption', ev.arrival ?? `${ev.from} comes before you and begs leave to speak.`));
     const parts: HTMLElement[] = [
-      ...(scene ? [scene] : []),
+      ...(scene ? [picture] : []),
       el('h2', undefined, ev.title),
       el('div', 'dim', `${ev.from} · ${formatDate(p.day)}`),
       el('p', 'letter', ev.text),

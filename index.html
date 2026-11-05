@@ -187,7 +187,12 @@
       body.classic .dialog .warn { color: #7a5410; }
       body.classic .dialog section { border-top-color: #8a7350; }
       .dialog.with-scene { width: min(640px, calc(100% - 40px)); }
-      .dialog canvas.scene { display: block; width: 100%; aspect-ratio: 2 / 1; image-rendering: pixelated; margin-bottom: 10px; border: 2px solid #15110d; box-sizing: border-box; }
+      .dialog .scene-frame { margin: -4px -8px 12px; border: 3px solid #15110d; background: #2a1c10; }
+      .dialog canvas.scene { display: block; width: 100%; aspect-ratio: 2 / 1; image-rendering: pixelated; }
+      .dialog .scene-caption {
+        padding: 10px 16px 12px; border-top: 3px solid #15110d; background: #3a2614;
+        font: 19px/1.35 'Pixelify Sans', monospace; font-variant-ligatures: none; color: #f0e0b0; text-shadow: 2px 2px 0 #120a04;
+      }
       .dialog .letter { margin: 8px 0 4px; font-size: 14px; }
       .dialog .choice button { display: block; width: 100%; text-align: left; font-size: 13px; font-weight: 600; padding: 6px 10px; }
       .dialog .choice button:disabled { opacity: 0.5; cursor: default; }
